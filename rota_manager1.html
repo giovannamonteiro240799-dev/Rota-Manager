@@ -1,685 +1,156 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Rota Manager</title>
 
-<!-- xlsx-js-style: SheetJS com suporte a estilos de célula (cores, fontes, bordas) -->
+<!-- xlsx-js-style / SheetJS com suporte a estilos de célula, cores, fontes, bordas -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
 <style>
-  :root {
-    --bg:        #0b1120;
-    --surface:   #111827;
-    --surface2:  #1e2d3d;
-    --border:    #1e3a5f;
-    --accent:    #f59e0b;
-    --accent2:   #3b82f6;
-    --green:     #22c55e;
-    --text:      #e2e8f0;
-    --muted:     #64748b;
-    --danger:    #ef4444;
-    --font:      'Segoe UI', system-ui, sans-serif;
-    --mono:      'Consolas', 'Courier New', monospace;
+  :root{
+    --bg:#0b1120; --surface:#111827; --surface2:#1e2d3d; --border:#1e3a5f;
+    --accent:#f59e0b; --accent2:#3b82f6; --green:#22c55e; --text:#e2e8f0;
+    --muted:#64748b; --danger:#ef4444; --font:Segoe UI,system-ui,sans-serif;
+    --mono:Consolas,"Courier New",monospace;
   }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;display:flex;flex-direction:column}
+  header{background:var(--surface);border-bottom:2px solid var(--accent);padding:0 24px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(0,0,0,.6)}
+  header .logo{font-size:18px;font-weight:800;letter-spacing:.06em;color:var(--accent)}
+  header .logo span{color:var(--text)}
+  header .spacer{flex:1}
+  header .badge{background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:4px 14px;font-size:12px;color:var(--muted);display:none}
+  header .badge.show{display:block}
+  header .badge b{color:var(--accent2)}
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  .toolbar{background:var(--surface2);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .btn{padding:8px 18px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+  .btn-primary{background:var(--accent);color:#000}
+  .btn-primary:hover{filter:brightness(1.12)}
+  .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+  .btn-secondary:hover{background:var(--border)}
+  .btn-blue{background:var(--accent2);color:#fff}
+  .btn-blue:hover{filter:brightness(1.15)}
+  .btn-green{background:var(--green);color:#000}
+  .btn-green:hover{filter:brightness(1.12)}
+  .btn:disabled{opacity:.4;cursor:default;filter:none}
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
+  .filter-wrap{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0 10px;height:36px;flex:1;min-width:160px;max-width:320px}
+  .filter-wrap:focus-within{border-color:var(--accent2)}
+  .filter-input{background:none;border:none;outline:none;color:var(--text);font-size:13px;flex:1}
+  .filter-input::placeholder{color:var(--muted)}
 
-  /* ── Header ── */
-  header {
-    background: var(--surface);
-    border-bottom: 2px solid var(--accent);
-    padding: 0 24px;
-    height: 56px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 2px 16px rgba(0,0,0,.6);
-  }
-  header .logo {
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    color: var(--accent);
-  }
-  header .logo span { color: var(--text); }
-  header .spacer { flex: 1; }
-  header .badge {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 4px 14px;
-    font-size: 12px;
-    color: var(--muted);
-    display: none;
-  }
-  header .badge.show { display: block; }
-  header .badge b { color: var(--accent2); }
+  .stats-bar{padding:6px 24px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;gap:20px;font-size:12px;color:var(--muted);display:none}
+  .stats-bar.show{display:flex}
+  .stat-item b{color:var(--text)}
+  .stat-item .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 
-  /* ── Painel Histórico ── */
-  #hist-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,.55);
-    z-index: 500;
-    align-items: flex-start;
-    justify-content: flex-end;
-  }
-  #hist-overlay.show { display: flex; }
-  #hist-panel {
-    background: var(--surface);
-    border-left: 2px solid var(--border);
-    width: 340px;
-    max-width: 95vw;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    box-shadow: -4px 0 32px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
-  }
-  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-  #hist-header {
-    display: flex;
-    align-items: center;
-    padding: 16px 18px;
-    border-bottom: 1px solid var(--border);
-    gap: 10px;
-  }
-  #hist-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
-  #hist-header .close-btn {
-    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
-  }
-  #hist-header .close-btn:hover { color: var(--text); }
-  #hist-list { flex: 1; overflow-y: auto; padding: 10px; }
-  .hist-item {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: border-color .15s;
-    position: relative;
-  }
-  .hist-item:hover { border-color: var(--accent2); }
-  .hist-item.ativo { border-color: var(--accent); background: rgba(245,158,11,.07); }
-  .hist-item-nome { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; word-break: break-all; }
-  .hist-item-info { font-size: 11px; color: var(--muted); }
-  .hist-item-info b { color: var(--accent2); }
-  .hist-del {
-    position: absolute; top: 8px; right: 8px;
-    background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1;
-    opacity: .5; transition: opacity .15s;
-  }
-  .hist-del:hover { opacity: 1; color: var(--danger); }
-  #hist-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .drop-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px;cursor:pointer}
+  .drop-zone.drag-over{background:rgba(59,130,246,.07)}
+  .drop-icon{font-size:56px;opacity:.4}
+  .drop-title{font-size:22px;font-weight:700;color:var(--text);opacity:.7}
+  .drop-sub{font-size:14px;color:var(--muted)}
+  .drop-btn{padding:12px 32px;background:var(--accent);color:#000;font-weight:800;font-size:15px;border:none;border-radius:8px;cursor:pointer;transition:.15s;margin-top:8px}
+  .drop-btn:hover{filter:brightness(1.1)}
+  .file-input{display:none}
 
-  /* botão histórico no header */
-  .btn-hist {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 5px 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    transition: border-color .15s;
-    white-space: nowrap;
-  }
-  .btn-hist:hover { border-color: var(--accent2); color: var(--accent2); }
+  .table-section{flex:1;overflow:auto;display:none;padding:0 0 40px;-webkit-overflow-scrolling:touch}
+  .table-section.show{display:block}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead{position:sticky;top:0;z-index:10}
+  thead th{background:var(--surface);color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
+  thead th:first-child{width:52px;text-align:center}
+  tbody tr{border-bottom:1px solid rgba(30,58,95,.5);transition:background .1s}
+  tbody tr:hover{background:rgba(255,255,255,.03)}
+  tbody tr.grouped{background:rgba(245,158,11,.04)}
+  td{padding:9px 14px;vertical-align:middle}
+  td:first-child{text-align:center}
+  .td-stop{font-family:var(--mono);font-size:12px;color:var(--muted);width:60px}
+  .td-addr{max-width:320px;word-break:break-word}
+  .td-addr-reformado{font-weight:600;color:var(--text)}
+  .td-addr-original{font-size:11px;color:var(--muted);margin-top:2px}
+  .td-coord{font-family:var(--mono);font-size:11px;color:var(--accent2);white-space:nowrap}
+  .td-coord.no-coord{color:var(--muted);font-style:italic}
+  .td-grupo{text-align:center}
+  .badge-group{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(245,158,11,.15);color:var(--accent);border:1px solid rgba(245,158,11,.3)}
+  .badge-single{color:var(--muted);font-size:11px}
 
-  @media (max-width: 640px) {
-    #hist-panel { width: 100vw; }
-    .btn-hist span.label { display: none; }
-  }
-  .toolbar {
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
+  .btn-map{width:34px;height:34px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-size:16px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0}
+  .btn-map:hover{background:var(--accent);color:#000;border-color:var(--accent);transform:scale(1.08)}
+  .btn-map.has-coord{border-color:var(--green);color:var(--green)}
+  .btn-map.has-coord:hover{background:var(--green);color:#000;border-color:var(--green)}
 
-  .btn {
-    padding: 8px 18px;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: .15s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .btn-primary  { background: var(--accent);  color: #000; }
-  .btn-primary:hover { filter: brightness(1.12); }
-  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: var(--border); }
-  .btn-blue     { background: var(--accent2); color: #fff; }
-  .btn-blue:hover { filter: brightness(1.15); }
-  .btn-green    { background: var(--green); color: #000; }
-  .btn-green:hover { filter: brightness(1.12); }
-  .btn:disabled { opacity: .4; cursor: default; filter: none; }
+  .loading{display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;flex:1;padding:40px}
+  .loading.show{display:flex}
+  .spinner{width:44px;height:44px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-msg{color:var(--muted);font-size:14px}
 
-  /* Filtro */
-  .filter-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0 10px;
-    height: 36px;
-    flex: 1;
-    min-width: 160px;
-    max-width: 320px;
-  }
-  .filter-wrap:focus-within { border-color: var(--accent2); }
-  .filter-input {
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: 13px;
-    flex: 1;
-  }
-  .filter-input::placeholder { color: var(--muted); }
+  .empty-filter{text-align:center;padding:60px;color:var(--muted);font-size:14px}
 
-  /* ── Stats bar ── */
-  .stats-bar {
-    padding: 6px 24px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 20px;
-    font-size: 12px;
-    color: var(--muted);
-    display: none;
-  }
-  .stats-bar.show { display: flex; }
-  .stat-item b { color: var(--text); }
-  .stat-item .dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 4px;
-  }
+  /* LOGIN */
+  #login-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+  #login-screen.hidden{display:none}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+  .login-logo{text-align:center;font-size:26px;font-weight:800;letter-spacing:.06em;color:var(--accent);margin-bottom:4px}
+  .login-logo span{color:var(--text)}
+  .login-sub{text-align:center;font-size:12px;color:var(--muted);margin-bottom:28px}
+  .login-tabs{display:flex;background:var(--surface2);border-radius:8px;padding:3px;margin-bottom:24px;gap:3px}
+  .login-tab{flex:1;padding:8px;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:var(--muted);transition:.15s}
+  .login-tab.active{background:var(--surface);color:var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.4)}
+  .login-field{margin-bottom:14px}
+  .login-field label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+  .login-input-wrap{display:flex;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0 12px;height:44px;gap:8px;transition:border-color .15s}
+  .login-input-wrap:focus-within{border-color:var(--accent2)}
+  .login-input-wrap .icon{font-size:15px;opacity:.6;flex-shrink:0}
+  .login-input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:var(--font)}
+  .login-input::placeholder{color:var(--muted)}
+  .toggle-pass{background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0;line-height:1;transition:color .15s;flex-shrink:0}
+  .toggle-pass:hover{color:var(--text)}
+  .btn-login{width:100%;padding:12px;border:none;border-radius:8px;background:var(--accent);color:#000;font-size:14px;font-weight:800;cursor:pointer;transition:.15s;margin-top:6px;letter-spacing:.04em}
+  .btn-login:hover{filter:brightness(1.1)}
+  .btn-login:disabled{opacity:.5;cursor:default;filter:none}
+  .login-error,.login-success{border-radius:8px;padding:9px 14px;font-size:13px;margin-bottom:14px;display:none;text-align:center}
+  .login-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:var(--danger)}
+  .login-success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);color:var(--green)}
+  .login-error.show,.login-success.show{display:block}
 
-  /* ── Drop zone ── */
-  #drop-zone {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 40px;
-    cursor: pointer;
-  }
-  #drop-zone.drag-over { background: rgba(59, 130, 246, .07); }
-  .drop-icon { font-size: 56px; opacity: .4; }
-  .drop-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--text);
-    opacity: .7;
-  }
-  .drop-sub { font-size: 14px; color: var(--muted); }
-  .drop-btn {
-    padding: 12px 32px;
-    background: var(--accent);
-    color: #000;
-    font-weight: 800;
-    font-size: 15px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: .15s;
-    margin-top: 8px;
-  }
-  .drop-btn:hover { filter: brightness(1.1); }
-  #file-input { display: none; }
+  .header-user{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .header-user .user-name{color:var(--text);font-weight:600}
+  .btn-logout{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer;transition:.15s}
+  .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
 
-  /* ── Tabela ── */
-  #table-section { flex: 1; overflow: auto; display: none; padding: 0 0 40px; -webkit-overflow-scrolling: touch; }
-  #table-section.show { display: block; }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  thead {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  thead th {
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .07em;
-    text-transform: uppercase;
-    padding: 10px 14px;
-    text-align: left;
-    border-bottom: 2px solid var(--border);
-    white-space: nowrap;
-  }
-  thead th:first-child { width: 52px; text-align: center; }
-
-  tbody tr {
-    border-bottom: 1px solid rgba(30, 58, 95, .5);
-    transition: background .1s;
-  }
-  tbody tr:hover { background: rgba(255,255,255,.03); }
-  tbody tr.grouped { background: rgba(245, 158, 11, .04); }
-
-  td {
-    padding: 9px 14px;
-    vertical-align: middle;
-  }
-  td:first-child { text-align: center; }
-
-  .td-stop {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--muted);
-    width: 60px;
-  }
-  .td-addr {
-    max-width: 320px;
-    word-break: break-word;
-  }
-  .td-addr-reformado {
-    font-weight: 600;
-    color: var(--text);
-  }
-  .td-addr-original {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
-  .td-coord {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--accent2);
-    white-space: nowrap;
-  }
-  .td-coord.no-coord { color: var(--muted); font-style: italic; }
-  .td-grupo { text-align: center; }
-
-  .badge-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    background: rgba(245, 158, 11, .15);
-    color: var(--accent);
-    border: 1px solid rgba(245,158,11,.3);
-  }
-  .badge-single {
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  /* Botão de mapa */
-  .btn-map {
-    width: 34px; height: 34px;
-    border-radius: 8px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--accent);
-    font-size: 16px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: .15s;
-    flex-shrink: 0;
-  }
-  .btn-map:hover {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
-    transform: scale(1.08);
-  }
-  .btn-map.has-coord {
-    border-color: var(--green);
-    color: var(--green);
-  }
-  .btn-map.has-coord:hover {
-    background: var(--green);
-    color: #000;
-    border-color: var(--green);
-  }
-
-  /* Loading */
-  #loading {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    flex: 1;
-    padding: 40px;
-  }
-  #loading.show { display: flex; }
-  .spinner {
-    width: 44px; height: 44px;
-    border: 4px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-msg { color: var(--muted); font-size: 14px; }
-
-  /* Coluna de ação */
-  td.td-action {
-    width: 44px;
-    text-align: center;
-    padding: 6px 8px;
-  }
-
-  /* Empty state */
-  .empty-filter {
-    text-align: center;
-    padding: 60px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  /* ── RESPONSIVO MOBILE ── */
-  @media (max-width: 640px) {
-    /* Header compacto */
-    header {
-      padding: 0 14px;
-      height: 48px;
-      gap: 10px;
-    }
-    header .logo { font-size: 15px; }
-    header .badge {
-      font-size: 11px;
-      padding: 3px 10px;
-      max-width: 160px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Toolbar em coluna */
-    .toolbar {
-      padding: 8px 12px;
-      gap: 8px;
-    }
-    .toolbar .btn { font-size: 12px; padding: 8px 12px; }
-    .filter-wrap {
-      max-width: 100%;
-      width: 100%;
-      order: 3;
-    }
-    #btn-export { margin-left: 0 !important; }
-    #count-badge { order: 4; width: 100%; text-align: center; }
-
-    /* Drop zone menor */
-    #drop-zone { padding: 24px 16px; gap: 12px; }
-    .drop-icon { font-size: 40px; }
-    .drop-title { font-size: 17px; }
-    .drop-sub { font-size: 13px; text-align: center; }
-    #server-status { font-size: 12px; text-align: center; }
-    .drop-btn { padding: 10px 24px; font-size: 14px; }
-
-    /* Stats bar com scroll horizontal */
-    .stats-bar {
-      padding: 5px 12px;
-      gap: 12px;
-      overflow-x: auto;
-      flex-wrap: nowrap;
-    }
-    .stat-item { white-space: nowrap; }
-
-    /* Tabela scroll horizontal + células compactas */
-    #table-section { padding: 0 0 60px; }
-    table { font-size: 12px; min-width: 480px; }
-    thead th { padding: 8px 10px; font-size: 10px; }
-    td { padding: 7px 10px; }
-
-    .td-addr { max-width: 200px; }
-    .td-addr-reformado { font-size: 12px; }
-    .td-addr-original { font-size: 10px; }
-    .td-coord { font-size: 10px; }
-    .td-stop { width: 46px; font-size: 11px; }
-
-    .btn-map { width: 30px; height: 30px; font-size: 14px; }
-  }
-
-  @media (max-width: 400px) {
-    header .logo { font-size: 13px; }
-    .drop-title { font-size: 15px; }
-    .toolbar .btn { font-size: 11px; padding: 7px 10px; }
-  }
-
-  /* ══ TELA DE LOGIN ══ */
-  #login-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  #login-screen.hidden { display: none; }
-
-  .login-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 36px 32px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 8px 40px rgba(0,0,0,.6);
-  }
-  .login-logo {
-    text-align: center;
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    color: var(--accent);
-    margin-bottom: 4px;
-  }
-  .login-logo span { color: var(--text); }
-  .login-sub {
-    text-align: center;
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 28px;
-  }
-
-  /* Abas */
-  .login-tabs {
-    display: flex;
-    background: var(--surface2);
-    border-radius: 8px;
-    padding: 3px;
-    margin-bottom: 24px;
-    gap: 3px;
-  }
-  .login-tab {
-    flex: 1;
-    padding: 8px;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    background: transparent;
-    color: var(--muted);
-    transition: .15s;
-  }
-  .login-tab.active {
-    background: var(--surface);
-    color: var(--accent);
-    box-shadow: 0 1px 6px rgba(0,0,0,.4);
-  }
-
-  /* Campos */
-  .login-field {
-    margin-bottom: 14px;
-  }
-  .login-field label {
-    display: block;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 6px;
-  }
-  .login-input-wrap {
-    display: flex;
-    align-items: center;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0 12px;
-    height: 44px;
-    gap: 8px;
-    transition: border-color .15s;
-  }
-  .login-input-wrap:focus-within { border-color: var(--accent2); }
-  .login-input-wrap .icon { font-size: 15px; opacity: .6; flex-shrink: 0; }
-  .login-input {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--text);
-    font-size: 14px;
-    font-family: var(--font);
-  }
-  .login-input::placeholder { color: var(--muted); }
-  .toggle-pass {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--muted);
-    font-size: 16px;
-    padding: 0;
-    line-height: 1;
-    transition: color .15s;
-    flex-shrink: 0;
-  }
-  .toggle-pass:hover { color: var(--text); }
-
-  .btn-login {
-    width: 100%;
-    padding: 12px;
-    border: none;
-    border-radius: 8px;
-    background: var(--accent);
-    color: #000;
-    font-size: 14px;
-    font-weight: 800;
-    cursor: pointer;
-    transition: .15s;
-    margin-top: 6px;
-    letter-spacing: .04em;
-  }
-  .btn-login:hover { filter: brightness(1.1); }
-  .btn-login:disabled { opacity: .5; cursor: default; filter: none; }
-
-  .login-error {
-    background: rgba(239,68,68,.12);
-    border: 1px solid rgba(239,68,68,.35);
-    color: var(--danger);
-    border-radius: 8px;
-    padding: 9px 14px;
-    font-size: 13px;
-    margin-bottom: 14px;
-    display: none;
-    text-align: center;
-  }
-  .login-error.show { display: block; }
-
-  .login-success {
-    background: rgba(34,197,94,.12);
-    border: 1px solid rgba(34,197,94,.35);
-    color: var(--green);
-    border-radius: 8px;
-    padding: 9px 14px;
-    font-size: 13px;
-    margin-bottom: 14px;
-    display: none;
-    text-align: center;
-  }
-  .login-success.show { display: block; }
-
-  /* Usuário logado no header */
-  .header-user {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .header-user .user-name {
-    color: var(--text);
-    font-weight: 600;
-  }
-  .btn-logout {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    font-size: 11px;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: .15s;
-  }
-  .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
-
-  @media (max-width: 640px) {
-    .login-card { padding: 28px 20px; border-radius: 12px; }
-    .login-logo { font-size: 22px; }
-    .btn-login { padding: 11px; }
+  @media max-width:640px{
+    header{padding:0 14px;height:48px;gap:10px}
+    header .logo{font-size:15px}
+    .toolbar{padding:8px 12px;gap:8px}
+    .toolbar .btn{font-size:12px;padding:8px 12px}
+    .filter-wrap{max-width:100%;width:100%;order:3}
+    .btn-green{margin-left:0!important}
+    .stats-bar{padding:5px 12px;gap:12px;overflow-x:auto;flex-wrap:nowrap}
+    .table-section{padding:0 0 60px}
+    table{font-size:12px;min-width:480px}
+    thead th{padding:8px 10px;font-size:10px}
+    td{padding:7px 10px}
+    .td-addr{max-width:200px}
+    .td-addr-reformado{font-size:12px}
+    .td-addr-original{font-size:10px}
+    .td-coord{font-size:10px}
+    .td-stop{width:46px;font-size:11px}
+    .btn-map{width:30px;height:30px;font-size:14px}
+    .login-card{padding:28px 20px;border-radius:12px}
+    .login-logo{font-size:22px}
+    .btn-login{padding:11px}
   }
 </style>
 </head>
 <body>
 
-<!-- ══ TELA DE LOGIN ══ -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo">🗺 ROTA<span>MANAGER</span></div>
+    <div class="login-logo">ROTA<span>MANAGER</span></div>
     <div class="login-sub">Sistema de gerenciamento de rotas</div>
 
     <div class="login-tabs">
@@ -687,51 +158,54 @@
       <button class="login-tab" id="tab-cadastro" onclick="switchTab('cadastro')">Cadastrar</button>
     </div>
 
-    <div id="login-error"  class="login-error"></div>
+    <div id="login-error" class="login-error"></div>
     <div id="login-success" class="login-success"></div>
 
-    <!-- Formulário Entrar -->
     <div id="form-entrar">
       <div class="login-field">
         <label>Usuário</label>
         <div class="login-input-wrap">
           <span class="icon">👤</span>
-          <input class="login-input" id="in-user" type="text" placeholder="Seu usuário" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('in-pass').focus()">
+          <input class="login-input" id="in-user" type="text" placeholder="Seu usuário" autocomplete="username"
+                 onkeydown="if(event.key==='Enter') document.getElementById('in-pass').focus()">
         </div>
       </div>
       <div class="login-field">
         <label>Senha</label>
         <div class="login-input-wrap">
           <span class="icon">🔒</span>
-          <input class="login-input" id="in-pass" type="password" placeholder="Sua senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+          <input class="login-input" id="in-pass" type="password" placeholder="Sua senha" autocomplete="current-password"
+                 onkeydown="if(event.key==='Enter') fazerLogin()">
           <button class="toggle-pass" onclick="toggleSenha('in-pass',this)" title="Mostrar/ocultar senha">👁</button>
         </div>
       </div>
       <button class="btn-login" id="btn-entrar" onclick="fazerLogin()">Entrar</button>
     </div>
 
-    <!-- Formulário Cadastrar -->
     <div id="form-cadastro" style="display:none">
       <div class="login-field">
         <label>Usuário</label>
         <div class="login-input-wrap">
           <span class="icon">👤</span>
-          <input class="login-input" id="cad-user" type="text" placeholder="Escolha um usuário" autocomplete="off" onkeydown="if(event.key==='Enter')document.getElementById('cad-pass').focus()">
+          <input class="login-input" id="cad-user" type="text" placeholder="Escolha um usuário" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') document.getElementById('cad-pass').focus()">
         </div>
       </div>
       <div class="login-field">
         <label>Senha</label>
         <div class="login-input-wrap">
           <span class="icon">🔒</span>
-          <input class="login-input" id="cad-pass" type="password" placeholder="Escolha uma senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')document.getElementById('cad-pass2').focus()">
+          <input class="login-input" id="cad-pass" type="password" placeholder="Escolha uma senha" autocomplete="new-password"
+                 onkeydown="if(event.key==='Enter') document.getElementById('cad-pass2').focus()">
           <button class="toggle-pass" onclick="toggleSenha('cad-pass',this)" title="Mostrar/ocultar senha">👁</button>
         </div>
       </div>
       <div class="login-field">
         <label>Confirmar senha</label>
         <div class="login-input-wrap">
-          <span class="icon">🔑</span>
-          <input class="login-input" id="cad-pass2" type="password" placeholder="Repita a senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')cadastrar()">
+          <span class="icon">🔒</span>
+          <input class="login-input" id="cad-pass2" type="password" placeholder="Repita a senha" autocomplete="new-password"
+                 onkeydown="if(event.key==='Enter') cadastrar()">
           <button class="toggle-pass" onclick="toggleSenha('cad-pass2',this)" title="Mostrar/ocultar senha">👁</button>
         </div>
       </div>
@@ -740,77 +214,48 @@
   </div>
 </div>
 
-<!-- ══ PAINEL HISTÓRICO ══ -->
-<div id="hist-overlay" onclick="fecharHistorico(event)">
-  <div id="hist-panel">
-    <div id="hist-header">
-      <span>🗂</span>
-      <span class="title">Histórico de Rotas</span>
-      <button class="close-btn" onclick="fecharHistorico()">✕</button>
-    </div>
-    <div id="hist-list">
-      <div id="hist-empty">Nenhuma rota no histórico ainda.</div>
-    </div>
-  </div>
-</div>
-
 <header>
-  <div class="logo">🗺 ROTA<span>MANAGER</span></div>
+  <div class="logo">ROTA<span>MANAGER</span></div>
   <div class="spacer"></div>
   <div class="badge" id="file-badge"></div>
-  <button class="btn-hist" id="btn-hist" onclick="abrirHistorico()" style="display:none">
-    🗂 <span class="label">Histórico</span>
-  </button>
   <div class="header-user" id="header-user" style="display:none">
-    <span>👤</span><span class="user-name" id="header-username"></span>
+    <span>👋</span><span class="user-name" id="header-username"></span>
     <button class="btn-logout" onclick="fazerLogout()">Sair</button>
   </div>
 </header>
 
 <div class="toolbar" id="toolbar" style="display:none">
-  <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
-    📂 Importar rota.xlsx
-  </button>
+  <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📂 Importar rota.xlsx</button>
   <div class="filter-wrap">
-    <span style="color:var(--muted);font-size:13px">🔍</span>
+    <span style="color:var(--muted);font-size:13px">🔎</span>
     <input class="filter-input" id="filter-input" placeholder="Filtrar endereços..." oninput="filtrarTabela()">
   </div>
-  <button class="btn btn-green" id="btn-export" onclick="exportarXlsx()" style="margin-left:auto">
-    ⬇️ Exportar xlsx
-  </button>
+  <button class="btn btn-green" id="btn-export" onclick="exportarXlsx()" style="margin-left:auto">⬇️ Exportar xlsx</button>
   <span id="count-badge" style="font-size:12px;color:var(--muted)"></span>
 </div>
 
-<!-- Drop zone inicial -->
-<div id="drop-zone" onclick="document.getElementById('file-input').click()">
-  <div class="drop-icon">📋</div>
-  <div class="drop-title">Importe sua planilha de rotas</div>
-  <div class="drop-sub">Arraste o arquivo <b>rota.xlsx</b> ou clique para selecionar</div>
-  <div id="server-status" style="font-size:13px;margin-top:6px;color:var(--muted)">
-    ⚠️ Rode <b>servidor.py</b> na mesma pasta para ativar o pipeline Python
-  </div>
-  <button class="drop-btn" onclick="event.stopPropagation(); document.getElementById('file-input').click()">
-    Escolher arquivo .xlsx
-  </button>
-</div>
-
-<input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
-
-<!-- Loading -->
-<div id="loading">
-  <div class="spinner"></div>
-  <div class="loading-msg" id="loading-msg">Processando endereços...</div>
-</div>
-
-<!-- Stats -->
 <div class="stats-bar" id="stats-bar">
   <span class="stat-item"><span class="dot" style="background:var(--text)"></span><b id="st-total">0</b> endereços</span>
   <span class="stat-item"><span class="dot" style="background:var(--accent)"></span><b id="st-grupos">0</b> agrupados</span>
   <span class="stat-item"><span class="dot" style="background:var(--green)"></span><b id="st-coord">0</b> com coordenadas</span>
 </div>
 
-<!-- Tabela -->
-<div id="table-section">
+<div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+  <div class="drop-icon">📄</div>
+  <div class="drop-title">Importe sua planilha de rotas</div>
+  <div class="drop-sub">Arraste o arquivo <b>rota.xlsx</b> ou clique para selecionar</div>
+  <div id="server-status" style="font-size:13px;margin-top:6px;color:var(--muted)">Rode <b>servidor.py</b> na mesma pasta para ativar o pipeline Python</div>
+  <button class="drop-btn" onclick="event.stopPropagation(); document.getElementById('file-input').click()">Escolher arquivo .xlsx</button>
+</div>
+
+<input type="file" id="file-input" class="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">Processando endereços...</div>
+</div>
+
+<div class="table-section" id="table-section">
   <table id="main-table">
     <thead>
       <tr>
@@ -826,1272 +271,43 @@
 </div>
 
 <script>
-// ══════════════════════════════════════════════════════════
-//  PIPELINE DE ENDEREÇOS (portado de enderecopipe.py)
-// ══════════════════════════════════════════════════════════
-
-const NOISE = new Set([
-  'APT','APTO','AP','APARTAMENTO','CASA','CS','LOJA','SALA',
-  'BLOCO','BL','TORRE','ANDAR','SN','S/N','NT','N/T',
-  'SEM','NUMERO','JD','JARDIM','DO','DA','DE','E','A','O'
-]);
-
-const PREFIX_MAP = {
-  'RUA':'RUA','R':'RUA',
-  'AVENIDA':'AVENIDA','AV':'AVENIDA',
-  'PRAÇA':'PRAÇA','PRACA':'PRAÇA','PÇ':'PRAÇA',
-  'ALAMEDA':'ALAMEDA','AL':'ALAMEDA',
-  'TRAVESSA':'TRAVESSA','TV':'TRAVESSA',
-};
-
-function stripAccents(s) {
-  return s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-}
-
-function normStreetCode(code) {
-  code = code.replace(/([A-Z])\s*-\s*(\d)/g, '$1$2');
-  code = code.replace(/([A-Z])\s+(\d)/g,     '$1$2');
-  return code;
-}
-
-function extractStreetKey(addr) {
-  if (!addr || typeof addr !== 'string') return '';
-  const u = stripAccents(addr.toUpperCase().trim());
-  const m = u.match(/^(RUA|R\.?|AVENIDA|AV\.?|PRACA|PRAÇA|PÇ|ALAMEDA|AL\.?|TRAVESSA|TV\.?)\s+(C[-\s]?\d+|T[-\s]?\d+|[A-Z]\s+\d+|\d+)/);
-  if (!m) return u.split(',')[0].trim();
-  let raw = m[1].replace(/\.$/, '');
-  let code = normStreetCode(m[2].trim());
-  let pfx = PREFIX_MAP[raw] || raw;
-  if (pfx === 'PRACA' || pfx === 'PCA') pfx = 'PRAÇA';
-  return `${pfx} ${code}`;
-}
-
-function parseQdLt(addr) {
-  const u = stripAccents(addr.toUpperCase());
-  let c = u.match(/\bQD\s*(\d+[A-Z]?)\s*LT\s*(\d+)/);
-  if (c) return [c[1], String(parseInt(c[2]))];
-  let qd = u.match(/\b(?:QUADRA|QDR?\.?)\s*:?\s*(\d+[A-Z]?)/);
-  let lt = u.match(/\b(?:LOTE|LT\.?)\s*:?\s*(\d+)/);
-  if (qd && lt) return [qd[1], String(parseInt(lt[1]))];
-  return [null, null];
-}
-
-function extractStreetNumber(addr) {
-  const u = stripAccents(addr.toUpperCase().trim());
-  const streetRe = u.match(/^((?:RUA|AVENIDA|AV\.?|PRACA|PRAÇA|ALAMEDA|TRAVESSA|R\.?)\s+(?:C[-\s]?\d+|T[-\s]?\d+|[A-Z]\s*\d+|\d+))(.*)/);
-  if (!streetRe) return null;
-  let rest = streetRe[2];
-  let firstToken = rest.trim().replace(/^,/, '').trim().split(/\s+/)[0] || '';
-  if (/^S\/?N$/.test(firstToken)) return null;
-  let restClean = rest.replace(/\b(?:APT|APTO|AP|APARTAMENTO|SALA|UNID|CASA)\s*\.?\s*\d+\b/g, '');
-  let allNums = [...restClean.matchAll(/\b(\d+)\b/g)].map(m => m[1]);
-  let candidates = allNums.filter(n => n !== '0');
-  if (!candidates.length) return null;
-  if (candidates[0].length >= 2) return candidates[0];
-  let longer = candidates.slice(1).filter(n => n.length >= 2);
-  if (longer.length) return longer[0];
-  return candidates[0];
-}
-
-const BLDG_RE = /\b(EDI\.?|ED\.?|EF\.?|EDIF[IÍ]CIO|EDIFICIO|CONDOM[IÍ]NIO|COND\.?|RESIDENCIAL|RESID\.?|RES\.?|BLOCO|BL\.?)\b/i;
-
-function extractBldName(addr) {
-  const u = stripAccents(addr.toUpperCase());
-  const patterns = [
-    /\b(?:EDIF[IÍ]CIO|EDIFICIO)\s+([A-Z][A-Z0-9 \-\.]+?)(?:,|\s+APT|\s+APTO|\s+AP\b|\s+\d{3,}|$)/,
-    /\b(?:EDI|ED|EF)\.?\s*([A-Z][A-Z0-9 \-\.]+?)(?:,|\s+APT|\s+APTO|\s+AP\b|\s+\d{3,}|$)/,
-    /\b(?:RESIDENCIAL|RESID\.?)\s+([A-Z][A-Z0-9 \-\.]+?)(?:,|\s+APT|\s+APTO|\s+AP\b|\s+\d{3,}|$)/,
-    /\b(?:RES)\.\s*([A-Z][A-Z0-9 \-\.]+?)(?:,|\s+APT|\s+APTO|\s+AP\b|\s+\d{3,}|$)/,
-    /\b(?:COND\.?|CONDOM[IÍ]NIO)\s+(?:RESIDENCIAL\s+)?([A-Z][A-Z0-9 \-\.]+?)(?:,|\s+APT|\s+APTO|\s+AP\b|\s+\d{3,}|$)/,
-  ];
-  for (const pat of patterns) {
-    const hit = u.match(pat);
-    if (hit) {
-      let name = hit[1].trim().replace(/,\s*$/, '').replace(/\s*-\s*$/, '').replace(/\s+APT.*$/, '').trim();
-      if (name && name.length > 1) return name;
-    }
-  }
-  return null;
-}
-
-function bldPrefix(addr) {
-  const u = addr.toUpperCase();
-  if (/\b(EDIF[IÍ]CIO|EDIFICIO|EDI?\.?|EF\.?)\b/.test(u)) return 'ED.';
-  if (/\b(RESIDENCIAL|RESID\.?|RES\.?)\b/.test(u)) return 'RES.';
-  if (/\b(COND\.?|CONDOM[IÍ]NIO)\b/.test(u)) return 'COND.';
-  return 'ED.';
-}
-
-function standardize(addr) {
-  if (!addr || typeof addr !== 'string' || !addr.trim()) return '';
-  const sk = extractStreetKey(addr);
-  const [qd, lt] = parseQdLt(addr);
-  if (qd !== null && lt !== null) return `${sk}, ${qd}-${lt}`;
-  const num = extractStreetNumber(addr);
-  if (num) return `${sk}, ${num}`;
-  if (BLDG_RE.test(addr)) {
-    const name = extractBldName(addr);
-    if (name) return `${sk}, ${bldPrefix(addr)} ${name}`;
-  }
-  return sk;
-}
-
-function fuzzyKey(addr) {
-  if (!addr || typeof addr !== 'string') return '';
-  let t = stripAccents(addr.toUpperCase());
-  t = t.replace(/^(RUA|AVENIDA|AV\.?|PRACA|PRAÇA|PÇ|ALAMEDA|TRAVESSA|R\.?)\s+/, '');
-  t = normStreetCode(t);
-  t = t.replace(BLDG_RE, '');
-  t = t.replace(/\b(APT|APTO|AP|APARTAMENTO|CASA|CS)\s*\d+\b/g, '');
-  t = t.replace(/\b\d+\b/g, '');
-  t = t.replace(/[,.\-/\\|]/g, ' ');
-  const tokens = t.split(/\s+/).filter(tk => tk && !NOISE.has(tk) && tk.length > 1);
-  return [...tokens].sort().join(' ');
-}
-
-function similarity(a, b) {
-  if (!a || !b) return 0;
-  const longer = a.length > b.length ? a : b;
-  const shorter = a.length > b.length ? b : a;
-  if (longer.length === 0) return 1.0;
-  let matches = 0;
-  for (let i = 0; i < shorter.length; i++) {
-    if (longer.includes(shorter[i])) matches++;
-  }
-  // Simple ratio
-  const lcs = longestCommonSubstr(a, b);
-  return (2 * lcs) / (a.length + b.length);
-}
-
-function longestCommonSubstr(a, b) {
-  let max = 0;
-  const dp = Array(a.length + 1).fill(null).map(() => Array(b.length + 1).fill(0));
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      if (a[i-1] === b[j-1]) {
-        dp[i][j] = dp[i-1][j-1] + 1;
-        max = Math.max(max, dp[i][j]);
-      }
-    }
-  }
-  return max;
-}
-
-function groupRows(rows, threshold = 0.72) {
-  const n = rows.length;
-  const parent = Array.from({length: n}, (_, i) => i);
-
-  function find(x) {
-    while (parent[x] !== x) {
-      parent[x] = parent[parent[x]];
-      x = parent[x];
-    }
-    return x;
-  }
-  function union(x, y) {
-    const rx = find(x), ry = find(y);
-    if (rx !== ry) parent[rx] = ry;
-  }
-
-  const streets  = rows.map(r => extractStreetKey(r.address));
-  const stdKeys  = rows.map(r => standardize(r.address));
-  const fkeys    = rows.map(r => fuzzyKey(r.address));
-  const bldnames = rows.map(r => stripAccents((extractBldName(r.address) || '').toUpperCase()));
-
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (streets[i] !== streets[j]) continue;
-      const ki = stdKeys[i], kj = stdKeys[j];
-      const kiHas = ki.includes(','), kjHas = kj.includes(',');
-      if (kiHas && kjHas) { if (ki === kj) union(i, j); continue; }
-      const sameBld = bldnames[i] && bldnames[j] && bldnames[i] === bldnames[j];
-      if (similarity(fkeys[i], fkeys[j]) >= threshold || sameBld) union(i, j);
-    }
-  }
-
-  const groups = {};
-  for (let i = 0; i < n; i++) {
-    const root = find(i);
-    if (!groups[root]) groups[root] = [];
-    groups[root].push(i);
-  }
-
-  for (const [root, members] of Object.entries(groups)) {
-    const labels = members.map(m => standardize(rows[m].address));
-    const best = labels.reduce((a, b) => {
-      const scoreA = a.length + (a.includes(',') ? 1 : 0) * 100;
-      const scoreB = b.length + (b.includes(',') ? 1 : 0) * 100;
-      return scoreA >= scoreB ? a : b;
-    }, '');
-    const stops = members
-      .map(m => rows[m].stop)
-      .filter(Boolean)
-      .sort((a, b) => String(a).padStart(10, '0').localeCompare(String(b).padStart(10, '0')));
-    const stopStr = stops.length > 1 ? `Stop: ${stops.join(', ')}` : '';
-    for (const m of members) {
-      rows[m].group_id    = parseInt(root);
-      rows[m].group_label = best;
-      rows[m].group_stops = stopStr;
-      rows[m].group_size  = members.length;
-    }
-  }
-  return rows;
-}
-
-// ══════════════════════════════════════════════════════════
-//  LEITURA DO XLSX
-// ══════════════════════════════════════════════════════════
-
-function findCol(headers, pats) {
-  for (const pat of pats) {
-    const re = new RegExp(pat, 'i');
-    for (let i = 0; i < headers.length; i++) {
-      if (re.test(headers[i])) return i;
-    }
-  }
-  return null;
-}
-
-function parseXlsx(buffer) {
-  const wb = XLSX.read(buffer, {type: 'array'});
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const data = XLSX.utils.sheet_to_json(ws, {header: 1, defval: ''});
-  if (!data.length) return [];
-
-  const headers = data[0].map(h => String(h || '').trim());
-  const colStop = findCol(headers, ['stop', '^c$', '^parada']);
-  const colAddr = findCol(headers, ['destination.?address', 'endere[cç]o', 'address']);
-  const colLat  = findCol(headers, ['\\blat\\b', 'latitude']);
-  const colLon  = findCol(headers, ['\\blon\\b', '\\blng\\b', 'longitude']);
-  const colCoor = findCol(headers, ['coordenadas', 'coord']);
-
-  const rows = [];
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    const g = (idx) => idx !== null && idx < row.length ? String(row[idx] || '').trim() : '';
-    const lat = g(colLat), lon = g(colLon);
-    const coordFromCols = lat && lon ? `${lat},${lon}` : '';
-    const coordFromCol  = g(colCoor);
-    rows.push({
-      raw_row: row,
-      stop:    g(colStop),
-      address: g(colAddr),
-      coord:   coordFromCols || coordFromCol,
-      lat:     lat,
-      lon:     lon,
-    });
-  }
-  return { rows, headers, colAddr, colLat, colLon, colCoor };
-}
-
-// ══════════════════════════════════════════════════════════
-//  APP
-// ══════════════════════════════════════════════════════════
-
-let _allRows = [];
-let _fileName = '';
-let _headers = [];
-let _colLat = null;
-let _colLon = null;
-let _colCoor = null;
-
-// Drag-and-drop
-const dropZone = document.getElementById('drop-zone');
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) {
-    if (!_serverOnline) {
-      alert('⚠️ Servidor não encontrado.\nRode servidor.py na mesma pasta e tente novamente.');
-      return;
-    }
-    _fileName = file.name;
-    processarComServidor(file);
-  }
-});
-
-
-
-function showLoading(msg) {
-  document.getElementById('loading-msg').textContent = msg;
-  document.getElementById('drop-zone').style.display = 'none';
-  document.getElementById('loading').classList.add('show');
-  document.getElementById('table-section').classList.remove('show');
-  document.getElementById('stats-bar').classList.remove('show');
-  document.getElementById('toolbar').style.display = 'none';
-}
-
-function hideLoading() {
-  document.getElementById('loading').classList.remove('show');
-}
-
-function processFile(file) {
-  _fileName = file.name;
-  showLoading(`Lendo ${file.name}...`);
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    setTimeout(() => {
-      try {
-        document.getElementById('loading-msg').textContent = 'Processando endereços...';
-        const buffer = new Uint8Array(e.target.result);
-        const {rows, headers, colLat, colLon, colCoor} = parseXlsx(buffer);
-        _headers = headers; _colLat = colLat; _colLon = colLon; _colCoor = colCoor;
-        document.getElementById('loading-msg').textContent = 'Agrupando rotas...';
-        setTimeout(() => {
-          const grouped = groupRows(rows);
-          _allRows = grouped;
-          hideLoading();
-          renderTable(grouped);
-          updateStats(grouped);
-          document.getElementById('file-badge').innerHTML = `📄 <b>${_fileName}</b> — ${grouped.length} endereços`;
-          document.getElementById('file-badge').classList.add('show');
-          document.getElementById('toolbar').style.display = 'flex';
-        }, 50);
-      } catch(err) {
-        hideLoading();
-        document.getElementById('drop-zone').style.display = 'flex';
-        alert('Erro ao processar arquivo: ' + err.message);
-      }
-    }, 80);
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function updateStats(rows) {
-  // Conta linhas únicas (colapsando grupos)
-  const seenG = new Set();
-  let uniq = 0;
-  for (const r of rows) {
-    const gid = r.group_size > 1 ? r.group_id : null;
-    if (gid !== null) { if (!seenG.has(gid)) { seenG.add(gid); uniq++; } }
-    else uniq++;
-  }
-  const grupos   = seenG.size;
-  const comCoord = rows.filter(r => r.coord).length;
-  document.getElementById('st-total').textContent = uniq;
-  document.getElementById('st-grupos').textContent = grupos;
-  document.getElementById('st-coord').textContent = comCoord;
-  document.getElementById('stats-bar').classList.add('show');
-}
-
-function renderTable(rows) {
-  const tbody = document.getElementById('table-body');
-  tbody.innerHTML = '';
-
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-filter">Nenhum endereço encontrado.</td></tr>';
-  } else {
-    // ── Colapsa grupos: 1 linha por group_id ──────────────────────────
-    const seenGroups = new Set();
-    const displayRows = [];
-    for (const row of rows) {
-      const gid = row.group_id !== undefined ? row.group_id : null;
-      if (row.group_size > 1 && gid !== null) {
-        if (seenGroups.has(gid)) continue; // já adicionou esse grupo
-        seenGroups.add(gid);
-        // Coleta todos os originais do grupo para exibir expandido
-        const membros = rows.filter(r => r.group_id === gid);
-        displayRows.push({ ...row, _membros: membros });
-      } else {
-        displayRows.push({ ...row, _membros: [row] });
-      }
-    }
-
-    for (const row of displayRows) {
-      const tr = document.createElement('tr');
-      if (row.group_size > 1) tr.classList.add('grouped');
-
-      const hasCoord   = !!row.coord;
-      const coordText  = row.coord || '—';
-      const endReformado = row.group_label || standardize(row.address) || row.address;
-
-      // Stops únicos do grupo
-      const stops = [...new Set(row._membros.map(m => m.stop).filter(Boolean))].sort();
-      const stopsStr = stops.join(', ');
-
-      // Originais únicos do grupo (para exibir abaixo do endereço reformado)
-      const originais = [...new Set(row._membros.map(m => (m.endereco_original || m.address)).filter(Boolean))];
-
-      // Badge de grupo
-      let grupoHtml;
-      if (row.group_size > 1) {
-        grupoHtml = `<span class="badge-group">✕${row.group_size}</span>`;
-        if (stopsStr) grupoHtml += `<div style="font-size:10px;color:var(--muted);margin-top:3px">Stop: ${escHtml(stopsStr)}</div>`;
-      } else {
-        grupoHtml = '<span class="badge-single">—</span>';
-      }
-
-      // Botão mapa
-      const tdAction = document.createElement('td');
-      tdAction.className = 'td-action';
-      const btnMap = document.createElement('button');
-      btnMap.className = 'btn-map' + (hasCoord ? ' has-coord' : '');
-      btnMap.title = hasCoord ? 'Abrir no mapa: ' + row.coord : 'Abrir no mapa';
-      btnMap.textContent = '📍';
-      btnMap.dataset.coord     = row.coord || '';
-      btnMap.dataset.reformado = endReformado;
-      btnMap.dataset.original  = originais[0] || '';
-      btnMap.dataset.idx       = _allRows.indexOf(row._membros ? row._membros[0] : row);
-      btnMap.addEventListener('click', () => {
-        abrirMapa(btnMap.dataset.coord, btnMap.dataset.reformado, btnMap.dataset.original, parseInt(btnMap.dataset.idx));
-      });
-      tdAction.appendChild(btnMap);
-      tr.appendChild(tdAction);
-
-      // Originais: mostra todos do grupo em linhas menores
-      const originaisHtml = originais.map((o, i) =>
-        o !== endReformado
-          ? `<div class="td-addr-original">${escHtml(o)}</div>`
-          : ''
-      ).join('');
-
-      tr.insertAdjacentHTML('beforeend', `
-        <td class="td-stop">${escHtml(stopsStr || row.stop || '—')}</td>
-        <td class="td-addr">
-          <div class="td-addr-reformado">${escHtml(endReformado)}</div>
-          ${originaisHtml}
-        </td>
-        <td class="td-grupo">${grupoHtml}</td>
-        <td class="td-coord ${hasCoord ? '' : 'no-coord'}">${escHtml(coordText)}</td>
-      `);
-      tbody.appendChild(tr);
-    }
-  }
-
-  document.getElementById('table-section').classList.add('show');
-  updateCountBadge(rows.length);
-}
-
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function filtrarTabela() {
-  const q = document.getElementById('filter-input').value.trim().toUpperCase();
-  if (!q) {
-    renderTable(_allRows);
-    return;
-  }
-  const filtered = _allRows.filter(r => {
-    const label = (r.group_label || r.address || '').toUpperCase();
-    const orig  = (r.address || '').toUpperCase();
-    const stop  = (r.stop || '').toUpperCase();
-    const coord = (r.coord || '').toUpperCase();
-    return label.includes(q) || orig.includes(q) || stop.includes(q) || coord.includes(q);
-  });
-  renderTable(filtered);
-}
-
-function updateCountBadge(count) {
-  document.getElementById('count-badge').textContent =
-    count < _allRows.length
-      ? `${count} de ${_allRows.length} exibidos`
-      : `${count} endereços`;
-}
-
-// ══════════════════════════════════════════════════════════
-//  ABRIR MAPA — abre a interface HERE+Google para 1 endereço
-// ══════════════════════════════════════════════════════════
-
-// Recebe confirmação de coordenada vinda da janela do mapa
-window.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'confirmar_coord') return;
-  const { idx, lat, lng } = e.data;
-  if (idx === undefined || idx < 0 || idx >= _allRows.length) return;
-  const coord = parseFloat(lat).toFixed(6) + ',' + parseFloat(lng).toFixed(6);
-  // Atualiza o row pelo idx e todos os membros do mesmo grupo
-  const targetRow = _allRows[idx];
-  const gid = targetRow ? targetRow.group_id : null;
-  for (let i = 0; i < _allRows.length; i++) {
-    const r = _allRows[i];
-    if (i === idx || (gid !== undefined && gid !== null && r.group_id === gid)) {
-      r.coord = coord;
-      r.lat   = parseFloat(lat).toFixed(6);
-      r.lon   = parseFloat(lng).toFixed(6);
-    }
-  }
-  const q = document.getElementById('filter-input').value.trim();
-  if (q) filtrarTabela(); else renderTable(_allRows);
-  updateStats(_allRows);
-});
-
-function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
-  const lat = (() => {
-    if (!coord) return -16.7159;
-    const p = coord.split(',');
-    return parseFloat(p[0]) || -16.7159;
-  })();
-  const lng = (() => {
-    if (!coord) return -49.2925;
-    const p = coord.split(',');
-    return parseFloat(p[1]) || -49.2925;
-  })();
-
-  if (!_mapKeys.here_key || !_mapKeys.google_key) {
-    alert('⚠️ Chaves de mapa não carregadas. Faça login novamente e tente de novo.');
-    return;
-  }
-
-  const html = getMapHtml(_mapKeys.here_key, _mapKeys.google_key, lat, lng, endReformado, endOriginal, rowIdx, _token, window.location.origin);
-
-  const win = window.open('', '_blank', 'width=1280,height=860');
-  if (!win) { alert('Permita pop-ups para este site e tente novamente.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-}
-
-function getMapHtml(hereKey, googleKey, initLat, initLng, endReformado, endOriginal, rowIdx, authToken, origin) {
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>📍 ${endReformado}</title>
-<script src="https://js.api.here.com/v3/3.1/mapsjs-core.js"><\/script>
-<script src="https://js.api.here.com/v3/3.1/mapsjs-service.js"><\/script>
-<script src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"><\/script>
-<script src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"><\/script>
-<link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css"/>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { display:flex; flex-direction:column; height:100vh; background:#0b1120; font-family:Arial,sans-serif; overflow:hidden; }
-#top-bar {
-  display:flex; flex-direction:column; justify-content:center; gap:3px;
-  padding:7px 18px; min-height:50px;
-  background:#111827; border-bottom:2px solid #f59e0b;
-  box-shadow:0 2px 12px rgba(0,0,0,.5);
-}
-#top-bar .row1 { display:flex; align-items:center; gap:12px; }
-#top-bar .pin { font-size:20px; }
-#top-bar .lbl { color:#f59e0b; font-size:11px; font-weight:bold; letter-spacing:.08em; white-space:nowrap; }
-#top-bar .addr { color:#fff; font-size:14px; font-weight:bold; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; border-radius:4px; padding:2px 6px; transition:background .15s; }
-#top-bar .addr:hover { background:rgba(245,158,11,.18); color:#f59e0b; }
-#top-bar .addr:active { background:rgba(245,158,11,.32); }
-#copy-toast { position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(20px); background:#22c55e; color:#fff; font-size:13px; font-weight:bold; padding:8px 22px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,.4); }
-#copy-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-#top-bar .orig { color:#94a3b8; font-size:12px; padding-left:32px; line-height:1.35; white-space:normal; word-break:break-word; }
-#coord-bar {
-  display:flex; align-items:center; gap:10px;
-  padding:0 18px; height:42px; min-height:42px;
-  background:#1e2d3d; border-bottom:1px solid #1e3a5f;
-}
-#coord-display { flex:1; color:#64748b; font-size:13px; font-family:monospace; }
-#coord-display span { color:#60a5fa; font-weight:bold; }
-.btn { padding:7px 18px; border:none; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; transition:.15s; }
-#btn-copy { background:#1e3a5f; color:#60a5fa; }
-#btn-copy:hover { background:#2563eb; color:#fff; }
-#btn-confirm { background:#16a34a; color:#fff; padding:7px 22px; }
-#btn-confirm:hover { background:#15803d; }
-#btn-confirm.flash { background:#86efac; color:#14532d; }
-#google-status { font-size:11px; color:#64748b; font-family:monospace; background:#0b1120; border:1px solid #1e3a5f; border-radius:4px; padding:3px 10px; display:none; }
-#google-status.show { display:block; }
-#google-status span { color:#22c55e; font-weight:bold; }
-#btn-confirm { background:#16a34a; color:#fff; font-size:13px; padding:7px 22px; }
-#btn-confirm:hover { background:#15803d; }
-#btn-confirm.flash { background:#86efac; color:#14532d; }
-#google-status {
-  font-size:11px; color:#64748b; font-family:monospace;
-  background:#0b1120; border:1px solid #1e3a5f; border-radius:4px;
-  padding:3px 10px; display:none;
-}
-#google-status.show { display:block; }
-#google-status span { color:#22c55e; font-weight:bold; }
-#search-bar {
-  display:flex; align-items:center; gap:8px;
-  padding:8px 18px; background:#1e2d3d;
-  border-bottom:1px solid #1e3a5f;
-}
-#search-wrap {
-  display:flex; flex:1; align-items:center; gap:6px;
-  background:#0b1120; border:1px solid #1e3a5f; border-radius:8px;
-  padding:0 10px; height:34px; position:relative;
-}
-#search-wrap:focus-within { border-color:#60a5fa; }
-#search-input { flex:1; background:none; border:none; outline:none; color:#fff; font-size:13px; }
-#search-input::placeholder { color:#475569; }
-#btn-search { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:12px; font-weight:bold; cursor:pointer; }
-#btn-search:hover { background:#1d4ed8; }
-#suggestions {
-  position:absolute; z-index:1000; background:#1e2d3d; border:1px solid #1e3a5f; border-radius:8px;
-  max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,.5);
-  display:none; top:100%; left:0; right:0;
-}
-.sugg-item { padding:9px 14px; cursor:pointer; border-bottom:1px solid #1e3a5f; color:#e2e8f0; font-size:12px; }
-.sugg-item:last-child { border-bottom:none; }
-.sugg-item:hover { background:#1e3a5f; }
-.sugg-title { font-weight:bold; }
-.sugg-addr { color:#64748b; font-size:11px; }
-#map-toggle-bar {
-  display:flex; align-items:center; gap:6px;
-  padding:0 18px; height:36px; min-height:36px;
-  background:#1e2d3d; border-bottom:1px solid #1e3a5f;
-}
-.tgl-lbl { color:#64748b; font-size:11px; font-weight:bold; letter-spacing:.07em; margin-right:4px; }
-.tgl-btn { padding:5px 16px; border:2px solid transparent; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; transition:.15s; background:#0b1120; color:#64748b; }
-.tgl-btn.active-here  { border-color:#f59e0b; color:#f59e0b; background:#1a1200; }
-.tgl-btn.active-google { border-color:#22c55e; color:#22c55e; background:#001a0e; }
-#maps-container { flex:1; display:flex; min-height:0; }
-#map-here-wrap, #map-google-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
-#map-here-wrap { border-right:2px solid #1e3a5f; }
-.map-label { height:24px; min-height:24px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:bold; letter-spacing:.07em; background:#0b1120; border-bottom:1px solid #111827; }
-#lbl-here { color:#f59e0b; }
-#lbl-google { color:#22c55e; }
-.dot { width:7px; height:7px; border-radius:50%; }
-#lbl-here .dot { background:#f59e0b; }
-#lbl-google .dot { background:#22c55e; }
-#map-here { flex:1; min-height:0; }
-#google-map { flex:1; min-height:0; width:100%; }
-.panel-hidden { display:none !important; }
-#status-bar { height:26px; min-height:26px; background:#0b1120; display:flex; align-items:center; padding:0 18px; color:#475569; font-size:11px; border-top:1px solid #111827; }
-
-/* ── Responsivo mobile (mapa popup) ── */
-@media (max-width: 640px) {
-  #top-bar { padding:6px 12px; min-height:44px; gap:2px; }
-  #top-bar .addr { font-size:12px; }
-  #top-bar .orig { font-size:11px; padding-left:24px; }
-  #coord-bar { padding:0 10px; height:auto; min-height:38px; flex-wrap:wrap; gap:6px; padding-top:5px; padding-bottom:5px; }
-  #coord-display { font-size:11px; width:100%; }
-  #google-status { font-size:10px; }
-  .btn { padding:6px 12px; font-size:11px; }
-  #search-bar { padding:6px 10px; }
-  #map-toggle-bar { padding:0 10px; height:34px; }
-  .tgl-btn { padding:4px 12px; font-size:11px; }
-}
-</style>
-</head>
-<body>
-
-<div id="top-bar">
-  <div class="row1">
-    <span class="pin">📍</span>
-    <span class="lbl">ENDEREÇO:</span>
-    <span class="addr" title="Clique para copiar" onclick="copiarEndereco(this)">${escHtmlInline(endReformado)}</span>
-  </div>
-  ${endOriginal && endOriginal !== endReformado ? `<div class="orig">${escHtmlInline(endOriginal)}</div>` : ''}
-</div>
-
-<div id="coord-bar">
-  <div id="coord-display">
-    Pin: <span id="pin-lat">${initLat.toFixed(6)}</span>, <span id="pin-lng">${initLng.toFixed(6)}</span>
-  </div>
-  <div id="google-status">📍 Google: <span id="gc-val">—</span></div>
-  <button class="btn" id="btn-copy" onclick="copiarCoords()">📋 Copiar</button>
-  <button class="btn" id="btn-confirm" onclick="confirmarCoord()">✔ CONFIRMAR</button>
-</div>
-
-<div id="search-bar">
-  <div id="search-wrap">
-    <span style="color:#60a5fa;font-size:13px">🔍</span>
-    <input id="search-input" type="text" placeholder="Buscar endereço ou lat,lng..."/>
-    <div id="suggestions"></div>
-  </div>
-  <button class="btn" id="btn-search">BUSCAR</button>
-</div>
-
-<div id="map-toggle-bar">
-  <span class="tgl-lbl">MAPA:</span>
-  <button class="tgl-btn active-here" id="tgl-here"   onclick="toggleMap('here')">📍 HERE MAPS</button>
-  <button class="tgl-btn"             id="tgl-google" onclick="toggleMap('google')">🌐 GOOGLE MAPS</button>
-</div>
-
-<div id="maps-container">
-  <div id="map-here-wrap">
-    <div class="map-label" id="lbl-here"><span class="dot"></span> HERE MAPS</div>
-    <div id="map-here"></div>
-  </div>
-  <div id="map-google-wrap">
-    <div class="map-label" id="lbl-google"><span class="dot"></span> GOOGLE MAPS</div>
-    <div id="google-map"></div>
-  </div>
-</div>
-
-<div id="status-bar">📌 Clique ou arraste o pin para ajustar a localização.</div>
-<div id="copy-toast">✔ Endereço copiado!</div>
-
-<script>
-const HERE_KEY = '${hereKey}';
-const ROW_IDX  = ${rowIdx};
-let currentLat = ${initLat};
-let currentLng = ${initLng};
-
-// ── Atualiza display de coordenadas ────────────────────────────────────
-function updateDisplay(lat, lng) {
-  document.getElementById('pin-lat').textContent = lat.toFixed(6);
-  document.getElementById('pin-lng').textContent = lng.toFixed(6);
-  currentLat = lat; currentLng = lng;
-}
-
-// ── Copiar coords ──────────────────────────────────────────────────────
-function copiarCoords() {
-  const txt = currentLat.toFixed(6) + ',' + currentLng.toFixed(6);
-  navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.getElementById('btn-copy');
-    btn.textContent = '✔ Copiado!';
-    btn.style.background = '#166534'; btn.style.color = '#86efac';
-    setTimeout(() => { btn.textContent = '📋 Copiar'; btn.style.background=''; btn.style.color=''; }, 2000);
-  });
-}
-
-// ── Copiar endereço reformado ──────────────────────────────────────────
-function copiarEndereco(el) {
-  const txt = el.textContent.trim();
-  navigator.clipboard.writeText(txt).then(() => {
-    const toast = document.getElementById('copy-toast');
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2000);
-  });
-}
-
-// ── Confirmar coord → envia para a janela pai ──────────────────────────
-// ── Confirmar coord → envia para a janela pai e fecha ──────────────────
-function confirmarCoord() {
-  window.opener && window.opener.postMessage(
-    { type: 'confirmar_coord', idx: ROW_IDX, lat: currentLat, lng: currentLng }, '*'
-  );
-  const btn = document.getElementById('btn-confirm');
-  btn.classList.add('flash');
-  btn.textContent = '✔ SALVO!';
-  btn.disabled = true;
-  document.getElementById('status-bar').textContent =
-    '✔ Coordenada confirmada: ' + currentLat.toFixed(6) + ', ' + currentLng.toFixed(6);
-  setTimeout(() => { window.close(); }, 1500);
-}
-
-// ── HERE Maps ─────────────────────────────────────────────────────────
-const platform  = new H.service.Platform({ apikey: HERE_KEY });
-const layers    = platform.createDefaultLayers();
-const hereMap   = new H.Map(document.getElementById('map-here'), layers.vector.normal.map, { zoom: 18, center: { lat: currentLat, lng: currentLng } });
-window.addEventListener('resize', () => hereMap.getViewPort().resize());
-H.ui.UI.createDefault(hereMap, layers, 'pt-BR');
-const events   = new H.mapevents.MapEvents(hereMap);
-const behavior = new H.mapevents.Behavior(events);
-
-const SVG_PIN = \`<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48">
-  <defs><radialGradient id="bg" cx="40%" cy="35%" r="60%">
-    <stop offset="0%" stop-color="#60aaff"/>
-    <stop offset="100%" stop-color="#1a5fbf"/>
-  </radialGradient></defs>
-  <path d="M18 0 C8.06 0 0 8.06 0 18 C0 31.5 18 48 18 48 C18 48 36 31.5 36 18 C36 8.06 27.94 0 18 0 Z" fill="url(#bg)"/>
-  <ellipse cx="13" cy="11" rx="5" ry="4" fill="rgba(255,255,255,0.35)"/>
-  <circle cx="18" cy="20" r="5" fill="white"/>
-  <circle cx="18" cy="20" r="3" fill="#1a5fbf"/>
-</svg>\`;
-
-const pinIcon = new H.map.Icon('data:image/svg+xml;base64,' + btoa(SVG_PIN), { size:{w:36,h:48}, anchor:{x:18,y:48} });
-const marker  = new H.map.Marker({ lat: currentLat, lng: currentLng }, { icon: pinIcon, volatility: true });
-marker.draggable = true;
-hereMap.addObject(marker);
-
-hereMap.addEventListener('dragstart', e => { if (e.target instanceof H.map.Marker) behavior.disable(); });
-hereMap.addEventListener('drag', e => {
-  if (e.target instanceof H.map.Marker) {
-    const pos = hereMap.screenToGeo(e.currentPointer.viewportX, e.currentPointer.viewportY);
-    marker.setGeometry(pos);
-  }
-});
-hereMap.addEventListener('dragend', e => {
-  if (e.target instanceof H.map.Marker) {
-    behavior.enable();
-    const pos = marker.getGeometry();
-    updateDisplay(pos.lat, pos.lng);
-    updateGoogle(pos.lat, pos.lng);
-  }
-});
-hereMap.addEventListener('tap', e => {
-  if (e.target instanceof H.map.Marker) return;
-  const pos = hereMap.screenToGeo(e.currentPointer.viewportX, e.currentPointer.viewportY);
-  marker.setGeometry(pos);
-  updateDisplay(pos.lat, pos.lng);
-  updateGoogle(pos.lat, pos.lng);
-});
-
-// ── Google Maps iframe ────────────────────────────────────────────────
-// ── Google Maps JavaScript API ───────────────────────────────────────
-const GKEY = '${googleKey}';
-let googleMap = null;
-let googleMarker = null;
-let _googleReady = false;
-let _pendingGoto = null;
-
-// Carrega a Google Maps JS API dinamicamente
-function loadGoogleMapsAPI() {
-  const s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + GKEY + '&callback=initGoogleMap&language=pt-BR';
-  s.async = true; s.defer = true;
-  document.head.appendChild(s);
-}
-
-// Callback chamado pela API quando pronta
-window.initGoogleMap = function() {
-  googleMap = new google.maps.Map(document.getElementById('google-map'), {
-    center: { lat: currentLat, lng: currentLng },
-    zoom: 19,
-    mapTypeId: 'roadmap',
-    disableDefaultUI: false,
-    clickableIcons: false,
-  });
-
-  // Pin vermelho no Google Maps
-  googleMarker = new google.maps.Marker({
-    position: { lat: currentLat, lng: currentLng },
-    map: googleMap,
-    draggable: true,
-    title: 'Posição',
-  });
-
-  // ── CLIQUE no mapa → move pin Google + atualiza HERE ────────────────
-  googleMap.addListener('click', (e) => {
-    const lat = e.latLng.lat();
-    const lng = e.latLng.lng();
-    googleMarker.setPosition({ lat, lng });
-    sincronizarParaHere(lat, lng);
-  });
-
-  // ── ARRASTAR pin Google → atualiza HERE ─────────────────────────────
-  googleMarker.addListener('dragend', () => {
-    const pos = googleMarker.getPosition();
-    sincronizarParaHere(pos.lat(), pos.lng());
-  });
-
-  _googleReady = true;
-  if (_pendingGoto) {
-    updateGoogle(_pendingGoto[0], _pendingGoto[1]);
-    _pendingGoto = null;
-  }
-
-  document.getElementById('status-bar').textContent =
-    '📌 Clique em qualquer mapa para mover o pin. Ambos ficam sincronizados.';
-};
-
-// ── Sincroniza clique/drag do Google → HERE ──────────────────────────
-function sincronizarParaHere(lat, lng) {
-  // Move pin HERE
-  marker.setGeometry({ lat, lng });
-  hereMap.setCenter({ lat, lng });
-  hereMap.setZoom(19);
-  updateDisplay(lat, lng);
-  // Mostra badge Google capturado
-  const el = document.getElementById('google-status');
-  document.getElementById('gc-val').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
-  el.classList.add('show');
-  document.getElementById('status-bar').textContent =
-    '🌐 Google → HERE: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
-}
-
-// ── Move o Google Maps para lat/lng (chamado quando HERE muda) ────────
-function updateGoogle(lat, lng) {
-  if (!_googleReady) { _pendingGoto = [lat, lng]; return; }
-  googleMap.setCenter({ lat, lng });
-  googleMap.setZoom(19);
-  googleMarker.setPosition({ lat, lng });
-}
-
-loadGoogleMapsAPI();
-
-// ── Toggle ────────────────────────────────────────────────────────────
-let _activeMap = 'both';
-function toggleMap(which) {
-  _activeMap = which;
-  const hw = document.getElementById('map-here-wrap');
-  const gw = document.getElementById('map-google-wrap');
-  document.getElementById('tgl-here').className   = which === 'here'   ? 'tgl-btn active-here'   : 'tgl-btn';
-  document.getElementById('tgl-google').className = which === 'google' ? 'tgl-btn active-google' : 'tgl-btn';
-  if (which === 'here')   { hw.classList.remove('panel-hidden'); gw.classList.add('panel-hidden'); setTimeout(() => hereMap.getViewPort().resize(), 50); }
-  else if (which === 'google') { hw.classList.add('panel-hidden'); gw.classList.remove('panel-hidden'); }
-}
-toggleMap('here');
-
-// ── Busca ─────────────────────────────────────────────────────────────
-const searchInput = document.getElementById('search-input');
-const suggestionsEl = document.getElementById('suggestions');
-let suggestTimer = null;
-const hideSugg = () => { suggestionsEl.style.display = 'none'; suggestionsEl.innerHTML = ''; };
-
-const parseCoords = (text) => {
-  const m = text.trim().match(/^([-+]?\d{1,3}\.\d+)\s*,\s*([-+]?\d{1,3}\.\d+)$/);
-  if (!m) return null;
-  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { lat, lng };
-};
-
-function moveMap(lat, lng, title) {
-  marker.setGeometry({ lat, lng });
-  hereMap.setCenter({ lat, lng });
-  hereMap.setZoom(19);
-  updateDisplay(lat, lng);
-  updateGoogle(lat, lng);
-  searchInput.value = title;
-  hideSugg();
-  document.getElementById('status-bar').textContent = '📍 ' + title;
-}
-
-async function geocode(query) {
-  const c = parseCoords(query);
-  if (c) { moveMap(c.lat, c.lng, c.lat.toFixed(6) + ', ' + c.lng.toFixed(6)); return; }
-  try {
-    const r = await fetch('${origin}/api/geocode?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil'), {
-      headers: { 'Authorization': 'Bearer ${authToken}' }
-    });
-    const d = await r.json();
-    if (!d.ok) { document.getElementById('status-bar').textContent = d.erro || 'Erro na busca.'; return; }
-    if (d.items?.length) moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title);
-    else document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado.';
-  } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca.'; }
-}
-
-async function autosuggest(query) {
-  if (parseCoords(query)) { hideSugg(); return; }
-  if (query.length < 3) { hideSugg(); return; }
-  try {
-    const r = await fetch('${origin}/api/autosuggest?q=' + encodeURIComponent(query + ', Goiânia') + '&at=-16.7159,-49.2925', {
-      headers: { 'Authorization': 'Bearer ${authToken}' }
-    });
-    const d = await r.json();
-    if (!d.ok) { hideSugg(); return; }
-    const items = (d.items || []).filter(i => i.position);
-    if (!items.length) { hideSugg(); return; }
-    suggestionsEl.innerHTML = '';
-    items.forEach(item => {
-      const div = document.createElement('div');
-      div.className = 'sugg-item';
-      div.innerHTML = '<div class="sugg-title">' + item.title + '</div><div class="sugg-addr">' + (item.address?.label||'') + '</div>';
-      div.addEventListener('click', () => moveMap(item.position.lat, item.position.lng, item.title));
-      suggestionsEl.appendChild(div);
-    });
-    suggestionsEl.style.display = 'block';
-  } catch(e) { hideSugg(); }
-}
-
-searchInput.addEventListener('input', () => { clearTimeout(suggestTimer); suggestTimer = setTimeout(() => autosuggest(searchInput.value.trim()), 300); });
-searchInput.addEventListener('keydown', e => { if (e.key==='Enter') { e.stopPropagation(); geocode(searchInput.value.trim()); } if (e.key==='Escape') hideSugg(); });
-document.getElementById('btn-search').addEventListener('click', () => geocode(searchInput.value.trim()));
-document.addEventListener('click', e => { if (!e.target.closest('#search-bar')) hideSugg(); });
-<\/script>
-</body>
-</html>`;
-}
-
-function escHtmlInline(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ══════════════════════════════════════════════════════════
-//  INTEGRAÇÃO COM servidor.py (mesmo domínio da página)
-// ══════════════════════════════════════════════════════════
-const SERVER = '';
-let _serverOnline = false;
-
-// ── Token de autenticação (em memória; persistido via sessionStorage) ──
-let _token = null;
-let _mapKeys = { here_key: '', google_key: '' };
-let _appIniciado = false;
-
-// ── fetch autenticado: adiciona Authorization e trata sessão expirada ──
-async function apiFetch(path, options = {}) {
-  const headers = Object.assign({}, options.headers || {});
-  if (_token) headers['Authorization'] = 'Bearer ' + _token;
-  const resp = await fetch(SERVER + path, Object.assign({}, options, { headers }));
-  if (resp.status === 401) {
-    await sessaoExpirada();
-    throw new Error('Sessão expirada. Faça login novamente.');
-  }
-  return resp;
-}
-
-async function sessaoExpirada() {
-  _token = null;
-  clearSession();
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('header-user').style.display = 'none';
-  showError('Sua sessão expirou. Faça login novamente.');
-}
-
-async function checarServidor() {
-  try {
-    const r = await fetch(SERVER + '/ping', { signal: AbortSignal.timeout(900) });
-    _serverOnline = r.ok;
-  } catch(e) { _serverOnline = false; }
-
-  const el = document.getElementById('server-status');
-  if (el) {
-    el.innerHTML = _serverOnline
-      ? '✅ Servidor conectado — importe a <b>rota.xlsx</b> para iniciar'
-      : '⚠️ Rode <b>servidor.py</b> na mesma pasta antes de usar';
-    el.style.color = _serverOnline ? 'var(--green)' : 'var(--danger)';
-  }
-
-  // Mostra botão histórico assim que servidor conectar
-  if (_serverOnline) document.getElementById('btn-hist').style.display = '';
-}
-
-let _restaurouUmaVez = false;
-async function checarServidorInit() {
-  await checarServidor();
-  // Ao conectar pela primeira vez, tenta restaurar última rota
-  if (_serverOnline && !_restaurouUmaVez && !_allRows.length) {
-    _restaurouUmaVez = true;
-    await tentarRestaurarUltimaRota();
-  }
-}
-
-// checarServidorInit() e o intervalo só começam depois do login (ver entrarNoApp)
-
-// Ao escolher arquivo: envia pro servidor e roda pipeline automaticamente
-function handleFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  event.target.value = '';
-
-  if (!_serverOnline) {
-    alert('⚠️ Servidor não encontrado.\nRode servidor.py na mesma pasta e tente novamente.');
-    return;
-  }
-
-  processarComServidor(file);
-}
-
-async function processarComServidor(file) {
-  // Mostra loading
-  showLoading(`Enviando ${file.name}...`);
-  _fileName = file.name;
-
-  try {
-    // 1) Upload do rota.xlsx
-    const fd = new FormData();
-    fd.append('arquivo', file, 'rota.xlsx');
-    const up = await apiFetch('/upload', { method: 'POST', body: fd });
-    if (!up.ok) throw new Error('Falha no upload');
-
-    // 2) Roda tratamento_dados.py
-    document.getElementById('loading-msg').textContent = 'Rodando tratamento_dados.py...';
-    const pipe = await apiFetch('/pipeline', { method: 'POST' });
-    const pd   = await pipe.json();
-    if (!pd.ok) throw new Error(pd.erro || 'Erro no pipeline');
-
-    // 3) Busca o resultado (rota_processada_final.xlsx já lido pelo servidor)
-    document.getElementById('loading-msg').textContent = 'Carregando rota_processada_final.xlsx...';
-    const res  = await apiFetch('/dados');
-    const dado = await res.json();
-    if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
-
-    // 4) Popula a tabela
-    mostrarRotaNoApp(dado.rows || [], dado.headers || [], 'rota_processada_final.xlsx');
-
-  } catch(err) {
-    hideLoading();
-    document.getElementById('drop-zone').style.display = 'flex';
-    alert('❌ Erro: ' + err.message);
-  }
-}
-
-// Mantém função vazia para não quebrar referências antigas
-async function rodarPipeline() {}
-
-// ── Exibe dados no app (usado pelo histórico e pelo pipeline) ─────────
-function mostrarRotaNoApp(rows, headers, nomeArquivo) {
-  _headers = headers || [];
-  _allRows = rows    || [];
-
-  const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
-  _colLat  = hUp.findIndex(h => /LATITUDE|LAT/.test(h));
-  _colLon  = hUp.findIndex(h => /LONGITUDE|LON|LNG/.test(h));
-  _colCoor = hUp.findIndex(h => /COORDENADAS|COORD/.test(h));
-  if (_colLat  < 0) _colLat  = null;
-  if (_colLon  < 0) _colLon  = null;
-  if (_colCoor < 0) _colCoor = null;
-
-  hideLoading();
-  renderTable(_allRows);
-  updateStats(_allRows);
-
-  document.getElementById('file-badge').innerHTML =
-    `📄 <b>${escHtml(nomeArquivo)}</b> — ${_allRows.length} endereços`;
-  document.getElementById('file-badge').classList.add('show');
-  document.getElementById('table-section').classList.add('show');
-  document.getElementById('drop-zone').style.display = 'none';
-  document.getElementById('toolbar').style.display = 'flex';
-  document.getElementById('btn-hist').style.display = '';
-
-  _nomeAtual = nomeArquivo;
-  renderHistoricoPanel();
-}
-
-// ══════════════════════════════════════════════════════════
-//  HISTÓRICO DE ROTAS
-// ══════════════════════════════════════════════════════════
-let _nomeAtual = '';
-
-function abrirHistorico() {
-  carregarListaHistorico();
-  document.getElementById('hist-overlay').classList.add('show');
-}
-
-function fecharHistorico(e) {
-  if (e && e.target !== document.getElementById('hist-overlay')) return;
-  document.getElementById('hist-overlay').classList.remove('show');
-}
-
-async function carregarListaHistorico() {
-  try {
-    const r = await apiFetch('/historico');
-    const d = await r.json();
-    if (!d.ok) return;
-    renderHistoricoLista(d.historico || []);
-  } catch(e) {
-    document.getElementById('hist-list').innerHTML =
-      '<div id="hist-empty">Não foi possível carregar o histórico.</div>';
-  }
-}
-
-function renderHistoricoLista(lista) {
-  const el = document.getElementById('hist-list');
-  if (!lista.length) {
-    el.innerHTML = '<div id="hist-empty">Nenhuma rota no histórico ainda.<br>Importe um arquivo .xlsx para começar.</div>';
-    return;
-  }
-  el.innerHTML = lista.map(h => `
-    <div class="hist-item ${h.nome === _nomeAtual ? 'ativo' : ''}" onclick="carregarDoHistorico('${escHtml(h.nome)}')">
-      <button class="hist-del" title="Remover do histórico"
-        onclick="event.stopPropagation(); apagarDoHistorico('${escHtml(h.nome)}')">✕</button>
-      <div class="hist-item-nome">📄 ${escHtml(h.nome)}</div>
-      <div class="hist-item-info">
-        <b>${h.total}</b> endereços · ${escHtml(h.salvo_em || '')}
-      </div>
-    </div>
-  `).join('');
-}
-
-async function carregarDoHistorico(nome) {
-  document.getElementById('hist-overlay').classList.remove('show');
-  showLoading(`Carregando "${nome}"...`);
-  try {
-    const r = await apiFetch('/historico/carregar?nome=' + encodeURIComponent(nome));
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'Erro ao carregar');
-    mostrarRotaNoApp(d.rows, d.headers, d.nome);
-  } catch(err) {
-    hideLoading();
-    document.getElementById('drop-zone').style.display = 'flex';
-    alert('❌ Erro ao carregar do histórico: ' + err.message);
-  }
-}
-
-async function apagarDoHistorico(nome) {
-  if (!confirm(`Remover "${nome}" do histórico?`)) return;
-  try {
-    await apiFetch('/historico/apagar?nome=' + encodeURIComponent(nome), { method: 'DELETE' });
-    carregarListaHistorico();
-    if (_nomeAtual === nome) _nomeAtual = '';
-  } catch(e) { alert('Erro ao remover.'); }
-}
-
-function renderHistoricoPanel() { /* chamado ao carregar rota — já atualiza badge ativo */ }
-
-// ── Auto-restaurar última rota ao dar F5 ─────────────────────────────
-async function tentarRestaurarUltimaRota() {
-  try {
-    const r = await apiFetch('/historico');
-    const d = await r.json();
-    if (!d.ok || !d.historico.length) return;
-    const ultima = d.historico[0];
-    // Carrega a rota completa automaticamente
-    const r2 = await apiFetch('/historico/carregar?nome=' + encodeURIComponent(ultima.nome));
-    const d2  = await r2.json();
-    if (!d2.ok) return;
-    mostrarRotaNoApp(d2.rows, d2.headers, d2.nome);
-    // Avisa discretamente
-    const status = document.getElementById('server-status');
-    if (status) {
-      status.innerHTML = `✅ Rota restaurada automaticamente: <b>${escHtml(d2.nome)}</b>`;
-      status.style.color = 'var(--green)';
-    }
-  } catch(e) { /* silencioso, não quebra o fluxo */ }
-}
-
-
-// ══════════════════════════════════════════════════════════
-//  EXPORTAR XLSX ATUALIZADO
-// ══════════════════════════════════════════════════════════
-
-
-
-function exportarXlsx() {
-  if (!_allRows.length) { alert("Nenhum dado para exportar."); return; }
-
-  const btn = document.getElementById("btn-export");
-  btn.disabled = true;
-  btn.textContent = "⏳ Exportando...";
-
-  try {
-    // Localiza as colunas de lat, lon e coordenadas nos headers originais
-    const hUpper = _headers.map(x => String(x || '').toUpperCase().trim());
-    function findIdx(pats) {
-      for (const pat of pats) {
-        const i = hUpper.findIndex(h => new RegExp(pat, 'i').test(h));
-        if (i >= 0) return i;
-      }
-      return null;
-    }
-    const iLat   = findIdx(['LATITUDE', 'LAT']);
-    const iLon   = findIdx(['LONGITUDE', 'LON', 'LNG']);
-    const iCoord = findIdx(['COORDENADAS', 'COORD']);
-
-    // Monta a planilha: header original + cada raw_row com só lat/lon/coord substituídos
-    const dataOut = [_headers.slice()];
-    for (const row of _allRows) {
-      const r = (row.raw_row || []).map(c => (c === null || c === undefined) ? '' : c);
-      if (row.lat   && iLat   !== null) r[iLat]   = row.lat;
-      if (row.lon   && iLon   !== null) r[iLon]   = row.lon;
-      if (row.coord && iCoord !== null) r[iCoord] = row.coord;
-      dataOut.push(r);
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(dataOut);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rotas Consolidadas");
-    XLSX.writeFile(wb, "rota_atualizada.xlsx");
-
-    btn.textContent = "✔ Exportado!";
-    btn.style.background = "#166534";
-    setTimeout(() => {
-      btn.textContent = "⬇️ Exportar xlsx";
-      btn.style.background = "";
-      btn.disabled = false;
-    }, 2500);
-  } catch(err) {
-    alert("Erro ao exportar: " + err.message);
-    btn.textContent = "⬇️ Exportar xlsx";
-    btn.disabled = false;
-  }
-}
-</script>
-
-<!-- ══ SISTEMA DE LOGIN ══ -->
-<script>
-// ── Chave de sessão (sessionStorage — por aba) ───────────────────────
-const SESSION_KEY = 'rm_session_v1';
+const SERVER = 'http://localhost:8792';
+
+let allRows = [];
+let fileName = '';
+let headers = [];
+let colLat = null, colLon = null, colCoor = null;
+let serverOnline = false;
+
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function getSession() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+  try { return JSON.parse(sessionStorage.getItem('rm_session_v1') || 'null'); } catch { return null; }
 }
-function saveSession(user, token) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user, token })); }
-function clearSession()    { sessionStorage.removeItem(SESSION_KEY); }
+function saveSession(user, token) {
+  sessionStorage.setItem('rm_session_v1', JSON.stringify({ user, token }));
+}
+function clearSession() {
+  sessionStorage.removeItem('rm_session_v1');
+}
+function getToken() {
+  return getSession()?.token || '';
+}
+function authHeader() {
+  const t = getToken();
+  return t ? { 'Authorization': 'Bearer ' + t } : {};
+}
 
-// ── UI helpers ────────────────────────────────────────────────────────
-function showError(msg)   {
+function showError(msg) {
   const e = document.getElementById('login-error');
-  e.textContent = msg; e.classList.add('show');
+  e.textContent = msg;
+  e.classList.add('show');
   document.getElementById('login-success').classList.remove('show');
 }
 function showSuccess(msg) {
   const e = document.getElementById('login-success');
-  e.textContent = msg; e.classList.add('show');
+  e.textContent = msg;
+  e.classList.add('show');
   document.getElementById('login-error').classList.remove('show');
 }
 function clearMsgs() {
@@ -2101,22 +317,20 @@ function clearMsgs() {
 
 function switchTab(tab) {
   clearMsgs();
-  document.getElementById('form-entrar').style.display   = tab === 'entrar'   ? '' : 'none';
+  document.getElementById('form-entrar').style.display = tab === 'entrar' ? '' : 'none';
   document.getElementById('form-cadastro').style.display = tab === 'cadastro' ? '' : 'none';
-  document.getElementById('tab-entrar').className  = 'login-tab' + (tab === 'entrar'   ? ' active' : '');
+  document.getElementById('tab-entrar').className = 'login-tab' + (tab === 'entrar' ? ' active' : '');
   document.getElementById('tab-cadastro').className = 'login-tab' + (tab === 'cadastro' ? ' active' : '');
   setTimeout(() => {
-    const el = tab === 'entrar'
-      ? document.getElementById('in-user')
-      : document.getElementById('cad-user');
+    const el = tab === 'entrar' ? document.getElementById('in-user') : document.getElementById('cad-user');
     el && el.focus();
   }, 50);
 }
 
 function toggleSenha(id, btn) {
   const input = document.getElementById(id);
-  if (input.type === 'password') { input.type = 'text';     btn.textContent = '🙈'; }
-  else                           { input.type = 'password'; btn.textContent = '👁';  }
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
 }
 
 function setBtnLoading(id, loading, label) {
@@ -2125,10 +339,9 @@ function setBtnLoading(id, loading, label) {
   btn.textContent = loading ? '⏳ Aguarde...' : label;
 }
 
-// ── Entrar (chama /auth/login no servidor) ────────────────────────────
 async function fazerLogin() {
   const usuario = document.getElementById('in-user').value.trim();
-  const senha   = document.getElementById('in-pass').value;
+  const senha = document.getElementById('in-pass').value;
   if (!usuario || !senha) { showError('Preencha usuário e senha.'); return; }
 
   setBtnLoading('btn-entrar', true, 'Entrar');
@@ -2141,7 +354,6 @@ async function fazerLogin() {
     });
     const d = await r.json();
     if (d.ok) {
-      _token = d.token;
       saveSession(d.usuario, d.token);
       entrarNoApp(d.usuario);
     } else {
@@ -2155,17 +367,16 @@ async function fazerLogin() {
   }
 }
 
-// ── Cadastrar (chama /auth/cadastro no servidor) ──────────────────────
 async function cadastrar() {
   const usuario = document.getElementById('cad-user').value.trim();
-  const senha   = document.getElementById('cad-pass').value;
-  const senha2  = document.getElementById('cad-pass2').value;
+  const senha = document.getElementById('cad-pass').value;
+  const senha2 = document.getElementById('cad-pass2').value;
 
-  if (!usuario)           { showError('Informe um nome de usuário.'); return; }
+  if (!usuario) { showError('Informe um nome de usuário.'); return; }
   if (usuario.length < 3) { showError('Usuário deve ter pelo menos 3 caracteres.'); return; }
-  if (!senha)             { showError('Informe uma senha.'); return; }
-  if (senha.length < 4)   { showError('Senha deve ter pelo menos 4 caracteres.'); return; }
-  if (senha !== senha2)   { showError('As senhas não coincidem.'); return; }
+  if (!senha) { showError('Informe uma senha.'); return; }
+  if (senha.length < 4) { showError('Senha deve ter pelo menos 4 caracteres.'); return; }
+  if (senha !== senha2) { showError('As senhas não coincidem.'); return; }
 
   setBtnLoading('btn-cadastrar', true, 'Cadastrar');
   clearMsgs();
@@ -2177,8 +388,8 @@ async function cadastrar() {
     });
     const d = await r.json();
     if (d.ok) {
-      document.getElementById('cad-user').value  = '';
-      document.getElementById('cad-pass').value  = '';
+      document.getElementById('cad-user').value = '';
+      document.getElementById('cad-pass').value = '';
       document.getElementById('cad-pass2').value = '';
       showSuccess('✅ Usuário cadastrado! Agora faça login.');
       setTimeout(() => {
@@ -2196,40 +407,22 @@ async function cadastrar() {
   }
 }
 
-// ── Entrar no app ─────────────────────────────────────────────────────
-async function entrarNoApp(user) {
-  // valida o token e carrega as chaves de mapa (só liberadas para usuário logado)
-  try {
-    const r = await apiFetch('/api/config');
-    const d = await r.json();
-    if (d.ok) _mapKeys = { here_key: d.here_key || '', google_key: d.google_key || '' };
-  } catch (e) {
-    // token inválido/expirado — apiFetch já mostrou a tela de login (sessaoExpirada)
-    return;
-  }
-
+function entrarNoApp(user) {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('header-username').textContent = user;
-
-  if (!_appIniciado) {
-    _appIniciado = true;
-    checarServidorInit();
-    setInterval(checarServidor, 5000);
-  }
 }
 
-// ── Sair ──────────────────────────────────────────────────────────────
 async function fazerLogout() {
-  try {
-    if (_token) {
+  const t = getToken();
+  if (t) {
+    try {
       await fetch(SERVER + '/auth/logout', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + _token }
+        headers: { 'Authorization': 'Bearer ' + t }
       });
-    }
-  } catch (e) { /* ignora erro de rede no logout */ }
-  _token = null;
+    } catch(_) {}
+  }
   clearSession();
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('header-user').style.display = 'none';
@@ -2239,16 +432,264 @@ async function fazerLogout() {
   document.getElementById('in-pass').value = '';
 }
 
-// ── Init: verifica sessão ─────────────────────────────────────────────
-(function init() {
+(async function init() {
   const sess = getSession();
   if (sess && sess.user && sess.token) {
-    _token = sess.token;
-    entrarNoApp(sess.user);
-  } else {
-    setTimeout(() => document.getElementById('in-user').focus(), 100);
+    try {
+      const r = await fetch(SERVER + '/historico', {
+        headers: { 'Authorization': 'Bearer ' + sess.token }
+      });
+      if (r.ok) {
+        entrarNoApp(sess.user);
+        return;
+      }
+    } catch(_) {}
   }
+  clearSession();
+  setTimeout(() => document.getElementById('in-user').focus(), 100);
 })();
+
+function updateStats(rows) {
+  const seenG = new Set();
+  let uniq = 0;
+  for (const r of rows) {
+    const gid = r.group_size > 1 ? r.group_id : null;
+    if (gid != null) {
+      if (!seenG.has(gid)) { seenG.add(gid); uniq++; }
+    } else uniq++;
+  }
+  const grupos = seenG.size;
+  const comCoord = rows.filter(r => r.coord).length;
+  document.getElementById('st-total').textContent = uniq;
+  document.getElementById('st-grupos').textContent = grupos;
+  document.getElementById('st-coord').textContent = comCoord;
+  document.getElementById('stats-bar').classList.add('show');
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-filter">Nenhum endereço encontrado.</td></tr>';
+  } else {
+    const seenGroups = new Set();
+    const displayRows = [];
+    for (const row of rows) {
+      const gid = row.group_id !== undefined ? row.group_id : null;
+      if (row.group_size > 1 && gid !== null) {
+        if (seenGroups.has(gid)) continue;
+        seenGroups.add(gid);
+        const membros = rows.filter(r => r.group_id === gid);
+        displayRows.push({ ...row, membros });
+      } else {
+        displayRows.push({ ...row, membros: [row] });
+      }
+    }
+
+    for (const row of displayRows) {
+      const tr = document.createElement('tr');
+      if (row.group_size > 1) tr.classList.add('grouped');
+      const hasCoord = !!row.coord;
+      const coordText = row.coord || '';
+      const endReformado = row.group_label || row.address || '';
+      const stops = [...new Set(row.membros.map(m => m.stop).filter(Boolean))].sort();
+      const stopsStr = stops.join(', ');
+      const originais = [...new Set(row.membros.map(m => m.endereco_original || m.address).filter(Boolean))];
+
+      let grupoHtml = '';
+      if (row.group_size > 1) {
+        grupoHtml = `<span class="badge-group">${row.group_size}</span>`;
+        if (stopsStr) grupoHtml += `<div style="font-size:10px;color:var(--muted);margin-top:3px">Stop: ${escHtml(stopsStr)}</div>`;
+      } else {
+        grupoHtml = '<span class="badge-single">-</span>';
+      }
+
+      const tdAction = document.createElement('td');
+      tdAction.className = 'td-action';
+      const btnMap = document.createElement('button');
+      btnMap.className = 'btn-map' + (hasCoord ? ' has-coord' : '');
+      btnMap.title = hasCoord ? 'Abrir no mapa' : 'Abrir no mapa';
+      btnMap.textContent = '🗺';
+      btnMap.dataset.coord = row.coord || '';
+      btnMap.dataset.reformado = endReformado;
+      btnMap.dataset.original = originais[0] || '';
+      btnMap.dataset.idx = allRows.indexOf(row.membros ? row.membros[0] : row);
+      btnMap.addEventListener('click', () => abrirMapa(btnMap.dataset.coord, btnMap.dataset.reformado, btnMap.dataset.original, parseInt(btnMap.dataset.idx)));
+      tdAction.appendChild(btnMap);
+
+      tr.insertAdjacentHTML('beforeend', `
+        <td class="td-stop">${escHtml(stopsStr || row.stop || '')}</td>
+        <td class="td-addr">
+          <div class="td-addr-reformado">${escHtml(endReformado)}</div>
+          ${originais.filter(o => o !== endReformado).map(o => `<div class="td-addr-original">${escHtml(o)}</div>`).join('')}
+        </td>
+        <td class="td-grupo">${grupoHtml}</td>
+        <td class="td-coord ${hasCoord ? '' : 'no-coord'}">${hasCoord ? escHtml(coordText) : 'Sem coordenadas'}</td>
+      `);
+      tr.insertBefore(tdAction, tr.firstChild);
+      tbody.appendChild(tr);
+    }
+  }
+  document.getElementById('table-section').classList.add('show');
+  updateCountBadge(rows.length);
+}
+
+function updateCountBadge(count) {
+  document.getElementById('count-badge').textContent = count + (allRows.length ? ` de ${allRows.length} exibidos` : ' endereços');
+}
+
+function filtrarTabela() {
+  const q = document.getElementById('filter-input').value.trim().toUpperCase();
+  if (!q) { renderTable(allRows); return; }
+  const filtered = allRows.filter(r => {
+    const label = (r.group_label || r.address || '').toUpperCase();
+    const orig = (r.address || '').toUpperCase();
+    const stop = (r.stop || '').toUpperCase();
+    const coord = (r.coord || '').toUpperCase();
+    return label.includes(q) || orig.includes(q) || stop.includes(q) || coord.includes(q);
+  });
+  renderTable(filtered);
+}
+
+async function carregarListaHistorico() {
+  try {
+    const r = await fetch(SERVER + '/historico', { headers: { ...authHeader() } });
+    const d = await r.json();
+    if (!d.ok) return;
+  } catch(e) {}
+}
+
+async function processarComServidor(file) {
+  if (!serverOnline) {
+    alert('Servidor não encontrado. Rode servidor.py na mesma pasta e tente novamente.');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+
+  try {
+    const up = await fetch(SERVER + '/upload', {
+      method: 'POST',
+      headers: { ...authHeader() },
+      body: fd
+    });
+    const upJson = await up.json();
+    if (!upJson.ok) throw new Error(upJson.erro || 'Falha no upload.');
+
+    const pipe = await fetch(SERVER + '/pipeline', {
+      method: 'POST',
+      headers: { ...authHeader() }
+    });
+    const pipeJson = await pipe.json();
+    if (!pipeJson.ok) throw new Error(pipeJson.erro || 'Falha no pipeline.');
+
+    const res = await fetch(SERVER + '/dados', { headers: { ...authHeader() } });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha ao carregar dados.');
+
+    headers = d.headers || [];
+    allRows = d.rows || [];
+    renderTable(allRows);
+    updateStats(allRows);
+    document.getElementById('file-badge').innerHTML = `<b>${escHtml(file.name)}</b> · ${allRows.length} endereços`;
+    document.getElementById('file-badge').classList.add('show');
+    document.getElementById('toolbar').style.display = 'flex';
+  } catch (e) {
+    alert('Erro ao processar arquivo: ' + e.message);
+  }
+}
+
+function handleFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  fileName = file.name;
+  showLoading('Lendo ' + file.name + '...');
+  const reader = new FileReader();
+  reader.onload = e => {
+    setTimeout(async () => {
+      try {
+        document.getElementById('loading-msg').textContent = 'Processando endereços...';
+        const buffer = new Uint8Array(e.target.result);
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (!data.length) throw new Error('Planilha vazia.');
+        headers = data[0].map(h => String(h).trim());
+        const colStop = findCol(headers, ['stop', 'cód', 'parada']);
+        const colAddr = findCol(headers, ['destination address', 'endereco', 'address']);
+        const colLat = findCol(headers, ['latitude', 'lat']);
+        const colLon = findCol(headers, ['longitude', 'lon', 'lng']);
+        const colCoor = findCol(headers, ['coordenadas', 'coord']);
+        const rows = [];
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          const g = idx => idx != null && idx < row.length ? String(row[idx]).trim() : '';
+          const lat = g(colLat), lon = g(colLon);
+          const coord = g(colCoor) || (lat && lon ? `${lat},${lon}` : '');
+          rows.push({
+            raw_row: row,
+            stop: g(colStop),
+            address: g(colAddr),
+            coord,
+            lat, lon,
+            group_id: i,
+            group_label: g(colAddr),
+            group_size: 1,
+            group_stops: '',
+            endereco_original: g(colAddr)
+          });
+        }
+        allRows = rows;
+        hideLoading();
+        renderTable(rows);
+        updateStats(rows);
+        document.getElementById('file-badge').innerHTML = `<b>${escHtml(file.name)}</b> · ${rows.length} endereços`;
+        document.getElementById('file-badge').classList.add('show');
+        document.getElementById('toolbar').style.display = 'flex';
+      } catch(err) {
+        hideLoading();
+        document.getElementById('drop-zone').style.display = 'flex';
+        alert('Erro ao processar arquivo: ' + err.message);
+      }
+    }, 80);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('table-section').classList.remove('show');
+  document.getElementById('stats-bar').classList.remove('show');
+  document.getElementById('toolbar').style.display = 'none';
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+function findCol(headers, pats) {
+  for (const pat of pats) {
+    const re = new RegExp(pat, 'i');
+    for (let i = 0; i < headers.length; i++) if (re.test(headers[i])) return i;
+  }
+  return null;
+}
+
+function exportarXlsx() {
+  alert('Exportação depende do restante do bloco do teu HTML original. Se quiser, eu te mando a versão completa já preservando essa parte.');
+}
+
+function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
+  alert('Abrir mapa: ' + endReformado + ' / ' + coord);
+}
+
+async function carregarListaHistorico() {
+  try {
+    const r = await fetch(SERVER + '/historico', { headers: { ...authHeader() } });
+    const d = await r.json();
+  } catch(_) {}
+}
 </script>
 </body>
 </html>

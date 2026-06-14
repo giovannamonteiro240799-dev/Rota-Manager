@@ -1,5 +1,18 @@
 """
-servidor.py — com autenticação por token JWT real
+servidor.py
+===========
+
+Local: rode na mesma pasta do rota_manager1.html, tratamento_dados.py e rota.xlsx:
+
+python servidor.py
+
+Abra no browser: http://localhost:8792
+
+Online (PaaS - Railway/Render/Fly etc.):
+A plataforma define a porta via variável de ambiente PORT.
+Para proteger o acesso, defina APP_USER e APP_PASS (login/senha)
+nas variáveis de ambiente do serviço. Se não definir, o servidor
+fica sem autenticação (ok só para uso local).
 """
 
 import base64
@@ -16,7 +29,7 @@ HOST = os.environ.get('HOST', '0.0.0.0')
 PORT = int(os.environ.get('PORT', 8792))
 APP_USER = os.environ.get('APP_USER')
 APP_PASS = os.environ.get('APP_PASS')
-ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '')  # ex: https://meusite.com
+ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '')
 HTML_FILE = "rota_manager1.html"
 ARQ_ENTRADA = "rota.xlsx"
 ARQ_PROCESSADO = "rota_processada_final.xlsx"
@@ -24,15 +37,7 @@ TRATAMENTO_PY = "tratamento_dados.py"
 USERS_FILE = "usuarios.json"
 HISTORICO_FILE = "historico_rotas.json"
 
-# ════════════════════════════════════════════════════════════════
-# TOKENS VÁLIDOS EM MEMÓRIA  {token: username}
-# ════════════════════════════════════════════════════════════════
 _tokens_validos: dict[str, str] = {}
-
-
-# ════════════════════════════════════════════════════════════════
-# HISTÓRICO
-# ════════════════════════════════════════════════════════════════
 
 def carregar_historico() -> list:
     p = Path(HISTORICO_FILE)
@@ -45,7 +50,8 @@ def carregar_historico() -> list:
 
 def salvar_historico(historico: list):
     Path(HISTORICO_FILE).write_text(
-        json.dumps(historico, ensure_ascii=False, indent=2), 'utf-8')
+        json.dumps(historico, ensure_ascii=False, indent=2), 'utf-8'
+    )
 
 def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list):
     historico = carregar_historico()
@@ -62,11 +68,6 @@ def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list):
     historico = historico[:20]
     salvar_historico(historico)
     return entrada
-
-
-# ════════════════════════════════════════════════════════════════
-# USUÁRIOS
-# ════════════════════════════════════════════════════════════════
 
 def _hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
@@ -103,11 +104,6 @@ def autenticar_usuario(username: str, senha: str) -> bool:
         return False
     return u.get("hash") == _hash_senha(senha)
 
-
-# ════════════════════════════════════════════════════════════════
-# LÊ rota_processada_final.xlsx → JSON
-# ════════════════════════════════════════════════════════════════
-
 def ler_processado():
     try:
         from openpyxl import load_workbook
@@ -130,23 +126,24 @@ def ler_processado():
                     return i
         return None
 
-    col_addr  = find_col([r'destination.?address', r'reformado'])
-    col_stop  = find_col([r'sequence', r'stop', r'seq'])
-    col_lat   = find_col([r'\blatitude\b', r'\blat\b'])
-    col_lon   = find_col([r'\blongitude\b', r'\blon\b', r'\blng\b'])
+    col_addr = find_col([r'destination.?address', r'reformado'])
+    col_stop = find_col([r'sequence', r'stop', r'seq'])
+    col_lat = find_col([r'\blatitude\b', r'\blat\b'])
+    col_lon = find_col([r'\blongitude\b', r'\blon\b', r'\blng\b'])
     col_coord = find_col([r'coordenadas', r'coord'])
     col_count = find_col([r'rotas_iguais'])
     col_stops = find_col([r'stops do grupo'])
-    col_orig  = find_col([r'endere.o_original', r'original'])
+    col_orig = find_col([r'endere.o_original', r'original'])
 
     rows = []
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
         def g(idx):
-            if idx is None or idx >= len(row): return ''
+            if idx is None or idx >= len(row):
+                return ''
             v = row[idx]
             return str(v).strip() if v is not None else ''
-        lat   = g(col_lat)
-        lon   = g(col_lon)
+        lat = g(col_lat)
+        lon = g(col_lon)
         coord = g(col_coord) or (f"{lat},{lon}" if lat and lon else '')
         count = int(g(col_count) or 1)
         rows.append({
@@ -164,11 +161,6 @@ def ler_processado():
         })
     return rows, headers
 
-
-# ════════════════════════════════════════════════════════════════
-# SERVIDOR HTTP
-# ════════════════════════════════════════════════════════════════
-
 _dados_cache = None
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -177,12 +169,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         status = args[1] if len(args) > 1 else ''
         print(f" [{self.command}] {self.path} {status}")
 
-    # ── CORS origin dinâmico ─────────────────────────────────────
     def _cors_origin(self):
         req_origin = self.headers.get('Origin', '')
         if ALLOWED_ORIGIN:
             return ALLOWED_ORIGIN if req_origin == ALLOWED_ORIGIN else 'null'
-        # Desenvolvimento local: libera localhost qualquer porta
         if req_origin.startswith('http://localhost') or req_origin.startswith('http://127.'):
             return req_origin
         return 'null'
@@ -205,14 +195,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         self.end_headers()
 
-    # ── Valida token Bearer ──────────────────────────────────────
     def check_token(self) -> bool:
         auth = self.headers.get('Authorization', '')
         if auth.startswith('Bearer '):
             token = auth[7:].strip()
             if token in _tokens_validos:
                 return True
-        # Fallback: Basic Auth de variável de ambiente (compatibilidade)
         if APP_USER and APP_PASS:
             expected = 'Basic ' + base64.b64encode(f'{APP_USER}:{APP_PASS}'.encode()).decode()
             if self.headers.get('Authorization') == expected:
@@ -223,19 +211,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_cors()
 
-    # ═══════════════════ GET ════════════════════════════════════
-
     def do_GET(self):
-        # /ping — health check sem auth
         if self.path == '/ping':
             self.send_json({'ok': True})
             return
 
-        # / — serve o HTML (sem auth; o HTML em si não tem dados)
         if self.path in ('/', '/index', f'/{HTML_FILE}'):
             html_path = Path(HTML_FILE)
             if not html_path.exists():
-                self.send_response(404); self.end_headers()
+                self.send_response(404)
+                self.end_headers()
                 self.wfile.write(b'rota_manager1.html nao encontrado.')
                 return
             body = html_path.read_bytes()
@@ -246,7 +231,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        # Rotas protegidas — exigem token
         if not self.check_token():
             return
 
@@ -256,8 +240,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'Nenhum dado processado ainda.'}, 404)
             else:
                 rows, headers = _dados_cache
-                self.send_json({'ok': True, 'arquivo': ARQ_PROCESSADO,
-                                'rows': rows, 'headers': headers})
+                self.send_json({'ok': True, 'arquivo': ARQ_PROCESSADO, 'rows': rows, 'headers': headers})
 
         elif self.path == '/historico':
             historico = carregar_historico()
@@ -269,24 +252,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         elif self.path.startswith('/historico/carregar'):
             from urllib.parse import urlparse, parse_qs
-            qs    = parse_qs(urlparse(self.path).query)
-            nome  = qs.get('nome', [''])[0]
+            qs = parse_qs(urlparse(self.path).query)
+            nome = qs.get('nome', [''])[0]
             historico = carregar_historico()
             entrada = next((h for h in historico if h.get('nome') == nome), None)
             if entrada:
                 self.send_json({'ok': True, **entrada})
             else:
                 self.send_json({'ok': False, 'erro': 'Rota não encontrada no histórico.'}, 404)
-
         else:
-            self.send_response(404); self.end_headers()
-
-    # ═══════════════════ POST ═══════════════════════════════════
+            self.send_response(404)
+            self.end_headers()
 
     def do_POST(self):
         global _dados_cache
 
-        # /auth/cadastro — público
         if self.path == '/auth/cadastro':
             length = int(self.headers.get('Content-Length', 0))
             try:
@@ -298,7 +278,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # /auth/login — público; GERA e ARMAZENA o token
         if self.path == '/auth/login':
             length = int(self.headers.get('Content-Length', 0))
             try:
@@ -307,36 +286,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'JSON inválido.'})
                 return
             usuario = data.get('usuario', '').strip()
-            senha   = data.get('senha', '')
+            senha = data.get('senha', '')
             if autenticar_usuario(usuario, senha):
                 token = secrets.token_hex(32)
                 _tokens_validos[token] = usuario
-                print(f" [AUTH] Login OK: {usuario}")
                 self.send_json({'ok': True, 'token': token, 'usuario': usuario})
             else:
                 self.send_json({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
             return
 
-        # /auth/logout — exige token; invalida-o
         if self.path == '/auth/logout':
             auth = self.headers.get('Authorization', '')
             if auth.startswith('Bearer '):
                 token = auth[7:].strip()
-                usuario = _tokens_validos.pop(token, None)
-                if usuario:
-                    print(f" [AUTH] Logout: {usuario}")
+                _tokens_validos.pop(token, None)
             self.send_json({'ok': True})
             return
 
-        # Demais rotas POST — exigem token
         if not self.check_token():
             return
 
-        # /upload
         if self.path == '/upload':
             length = int(self.headers.get('Content-Length', 0))
-            body   = self.rfile.read(length)
-            ct     = self.headers.get('Content-Type', '')
+            body = self.rfile.read(length)
+            ct = self.headers.get('Content-Type', '')
             boundary = None
             for part in ct.split(';'):
                 part = part.strip()
@@ -353,12 +326,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             break
             if xlsx_bytes:
                 Path(ARQ_ENTRADA).write_bytes(xlsx_bytes)
-                print(f" [UPLOAD] {ARQ_ENTRADA} salvo ({len(xlsx_bytes)} bytes)")
                 self.send_json({'ok': True})
             else:
                 self.send_json({'ok': False, 'erro': 'Arquivo não encontrado no upload.'})
 
-        # /pipeline
         elif self.path == '/pipeline':
             if not Path(ARQ_ENTRADA).exists():
                 self.send_json({'ok': False, 'erro': f'{ARQ_ENTRADA} não encontrado. Faça o upload primeiro.'})
@@ -366,18 +337,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not Path(TRATAMENTO_PY).exists():
                 self.send_json({'ok': False, 'erro': f'{TRATAMENTO_PY} não encontrado na pasta.'})
                 return
-            print(f"\n [PIPELINE] Rodando {TRATAMENTO_PY}...")
             try:
-                result = subprocess.run(
-                    [sys.executable, TRATAMENTO_PY],
-                    capture_output=True, text=True, timeout=120)
+                result = subprocess.run([sys.executable, TRATAMENTO_PY], capture_output=True, text=True, timeout=120)
                 if result.returncode != 0:
                     erro = result.stderr or result.stdout or 'Erro desconhecido'
-                    self.send_json({'ok': False, 'erro': erro}); return
+                    self.send_json({'ok': False, 'erro': erro})
+                    return
                 rows, headers = ler_processado()
                 _dados_cache = (rows, headers)
                 adicionar_ao_historico(Path(ARQ_PROCESSADO).name, rows, headers)
-                print(f" [PIPELINE] ✅ {len(rows)} endereços carregados")
                 self.send_json({'ok': True, 'total': len(rows)})
             except subprocess.TimeoutExpired:
                 self.send_json({'ok': False, 'erro': 'Timeout: tratamento_dados.py demorou mais de 120s.'})
@@ -385,23 +353,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': str(e)})
 
         else:
-            self.send_response(404); self.end_headers()
-
-    # ═══════════════════ DELETE ═════════════════════════════════
+            self.send_response(404)
+            self.end_headers()
 
     def do_DELETE(self):
         if not self.check_token():
             return
         from urllib.parse import urlparse, parse_qs
         if self.path.startswith('/historico/apagar'):
-            qs   = parse_qs(urlparse(self.path).query)
+            qs = parse_qs(urlparse(self.path).query)
             nome = qs.get('nome', [''])[0]
             historico = carregar_historico()
-            salvar_historico([h for h in historico if h.get('nome') != nome])
+            novo = [h for h in historico if h.get('nome') != nome]
+            salvar_historico(novo)
             self.send_json({'ok': True})
         else:
-            self.send_response(404); self.end_headers()
-
+            self.send_response(404)
+            self.end_headers()
 
 def main():
     auth_status = "ATIVADO (login exigido)" if (APP_USER and APP_PASS) else "Token JWT (usuarios.json)"
