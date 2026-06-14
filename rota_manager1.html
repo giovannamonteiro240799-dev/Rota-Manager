@@ -110,6 +110,29 @@
   .header-user .user-name{color:var(--text);font-weight:600}
   .btn-logout{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;padding:4px 10px;cursor:pointer;transition:.15s}
   .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
+
+  /* ── Linha com coordenada editada manualmente ── */
+  tbody tr.coord-editada{background:rgba(245,158,11,.10) !important;border-left:3px solid var(--accent)}
+  tbody tr.coord-editada:hover{background:rgba(245,158,11,.16) !important}
+  tbody tr.coord-editada .td-coord{color:var(--accent) !important;font-weight:700}
+  .badge-editada{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--accent);background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:4px;padding:1px 5px;vertical-align:middle;margin-left:5px}
+
+  /* ── Modal de edição de coordenadas ── */
+  #coord-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
+  #coord-modal.show{display:flex}
+  .coord-modal-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px 28px 24px;width:100%;max-width:440px;box-shadow:0 8px 48px rgba(0,0,0,.7)}
+  .coord-modal-title{font-size:15px;font-weight:800;color:var(--accent);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .coord-modal-addr{font-size:12px;color:var(--muted);margin-bottom:20px;word-break:break-word;line-height:1.5}
+  .coord-modal-label{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:block}
+  .coord-modal-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none;transition:border-color .15s;margin-bottom:8px}
+  .coord-modal-input:focus{border-color:var(--accent2)}
+  .coord-modal-hint{font-size:11px;color:var(--muted);margin-bottom:20px}
+  .coord-modal-hint a{color:var(--accent2);text-decoration:none}
+  .coord-modal-hint a:hover{text-decoration:underline}
+  .coord-modal-row{display:flex;gap:10px}
+  .coord-modal-row .btn{flex:1;justify-content:center}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-danger:hover{filter:brightness(1.12)}
 </style>
 </head>
 <body>
@@ -213,6 +236,24 @@
 </div>
 
 <input type="file" id="file-input" class="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
+
+<!-- ── Modal: Editar Coordenadas ── -->
+<div id="coord-modal">
+  <div class="coord-modal-card">
+    <div class="coord-modal-title">✏️ Editar Coordenadas</div>
+    <div class="coord-modal-addr" id="coord-modal-addr"></div>
+    <label class="coord-modal-label">Coordenadas (lat,lon)</label>
+    <input class="coord-modal-input" id="coord-modal-input" type="text" placeholder="-16.6869,-49.2648" />
+    <div class="coord-modal-hint">
+      Cole no formato <b>latitude,longitude</b>. 
+      <a href="https://maps.google.com" target="_blank" rel="noopener">Abrir Google Maps ↗</a>
+    </div>
+    <div class="coord-modal-row">
+      <button class="btn btn-secondary" onclick="fecharModalCoord()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarCoordEditada()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
 
 <div class="loading" id="loading">
   <div class="spinner"></div>
@@ -641,9 +682,103 @@ function exportarXlsx() {
   alert('Exportação depende do teu bloco original. Se quiser, eu te mando a versão final inteira com essa parte preservada.');
 }
 
+// ── Estado do modal de edição de coordenadas ──
+let _coordModalRowIdx = null;  // índice em allRows do primeiro membro do grupo
+let _coordModalTr = null;       // elemento <tr> na tabela
+
 function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
-  alert('Abrir mapa: ' + endReformado + ' / ' + coord);
+  _coordModalRowIdx = rowIdx;
+  // Encontra a <tr> correspondente ao botão clicado
+  const btn = document.querySelector(`button[data-idx="${rowIdx}"]`);
+  _coordModalTr = btn ? btn.closest('tr') : null;
+
+  document.getElementById('coord-modal-addr').textContent = endReformado || endOriginal || '—';
+  document.getElementById('coord-modal-input').value = coord || '';
+  document.getElementById('coord-modal').classList.add('show');
+  setTimeout(() => document.getElementById('coord-modal-input').select(), 80);
 }
+
+function fecharModalCoord() {
+  document.getElementById('coord-modal').classList.remove('show');
+  _coordModalRowIdx = null;
+  _coordModalTr = null;
+}
+
+function salvarCoordEditada() {
+  const novaCoord = document.getElementById('coord-modal-input').value.trim();
+
+  // Valida o formato lat,lon  (aceita -16.686,-49.264 ou -16.686 -49.264 com espaço)
+  const normalizada = novaCoord.replace(/\s+/, ',');
+  const partes = normalizada.split(',');
+  if (novaCoord && (partes.length !== 2 || isNaN(parseFloat(partes[0])) || isNaN(parseFloat(partes[1])))) {
+    document.getElementById('coord-modal-input').style.borderColor = 'var(--danger)';
+    document.getElementById('coord-modal-input').focus();
+    return;
+  }
+  document.getElementById('coord-modal-input').style.borderColor = '';
+
+  // Atualiza o dado em allRows
+  if (_coordModalRowIdx !== null && allRows[_coordModalRowIdx]) {
+    const row = allRows[_coordModalRowIdx];
+    const coordAnterior = row.coord;
+    row.coord = normalizada || '';
+    if (normalizada) {
+      const [lat, lon] = normalizada.split(',');
+      row.lat = lat; row.lon = lon;
+    }
+    // Marca como editado manualmente (só destaca se a coord mudou)
+    if (normalizada !== coordAnterior) {
+      row._editado = true;
+    }
+  }
+
+  // Atualiza a célula de coordenada e a classe da linha na tabela
+  if (_coordModalTr) {
+    const tdCoord = _coordModalTr.querySelector('.td-coord');
+    const btnMap = _coordModalTr.querySelector('.btn-map');
+
+    if (normalizada) {
+      if (tdCoord) {
+        tdCoord.textContent = normalizada;
+        tdCoord.classList.remove('no-coord');
+        // Insere badge "EDITADO" se ainda não existir
+        if (!tdCoord.querySelector('.badge-editada')) {
+          const badge = document.createElement('span');
+          badge.className = 'badge-editada';
+          badge.textContent = '✎ EDITADO';
+          tdCoord.appendChild(badge);
+        }
+      }
+      if (btnMap) {
+        btnMap.classList.add('has-coord');
+        btnMap.dataset.coord = normalizada;
+      }
+    } else {
+      if (tdCoord) { tdCoord.textContent = 'Sem coordenadas'; tdCoord.classList.add('no-coord'); }
+      if (btnMap) { btnMap.classList.remove('has-coord'); btnMap.dataset.coord = ''; }
+    }
+
+    // Aplica / remove classe de destaque
+    const row = allRows[_coordModalRowIdx];
+    if (row && row._editado) {
+      _coordModalTr.classList.add('coord-editada');
+    } else {
+      _coordModalTr.classList.remove('coord-editada');
+    }
+  }
+
+  // Fecha o modal
+  fecharModalCoord();
+}
+
+// Fecha modal ao clicar fora do card
+document.getElementById('coord-modal').addEventListener('click', function(e) {
+  if (e.target === this) fecharModalCoord();
+});
+// Fecha com Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') fecharModalCoord();
+});
 </script>
 </body>
 </html>
