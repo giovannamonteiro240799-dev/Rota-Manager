@@ -34,6 +34,45 @@ ARQ_ENTRADA      = "rota.xlsx"
 ARQ_PROCESSADO   = "rota_processada_final.xlsx"
 TRATAMENTO_PY    = "tratamento_dados.py"
 USERS_FILE       = "usuarios.json"
+HISTORICO_FILE   = "historico_rotas.json"
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  HISTÓRICO DE ROTAS
+# ════════════════════════════════════════════════════════════════════════
+
+def carregar_historico() -> list:
+    p = Path(HISTORICO_FILE)
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text('utf-8'))
+    except Exception:
+        return []
+
+def salvar_historico(historico: list):
+    Path(HISTORICO_FILE).write_text(
+        json.dumps(historico, ensure_ascii=False, indent=2), 'utf-8'
+    )
+
+def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list):
+    """Salva ou atualiza a entrada do histórico para este arquivo."""
+    historico = carregar_historico()
+    from datetime import datetime
+    entrada = {
+        "nome":       nome_arquivo,
+        "total":      len(rows),
+        "headers":    headers,
+        "rows":       rows,
+        "salvo_em":   datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+    # Substitui se já existe mesmo nome, senão adiciona no topo
+    historico = [h for h in historico if h.get("nome") != nome_arquivo]
+    historico.insert(0, entrada)
+    # Mantém no máximo 20 entradas
+    historico = historico[:20]
+    salvar_historico(historico)
+    return entrada
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -169,7 +208,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def send_cors(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
@@ -227,6 +266,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 rows, headers = _dados_cache
                 self.send_json({'ok': True, 'arquivo': ARQ_PROCESSADO,
                                 'rows': rows, 'headers': headers})
+
+        # ── /historico → lista entradas salvas ───────────────────────
+        elif self.path == '/historico':
+            historico = carregar_historico()
+            # Retorna lista resumida (sem rows) para o menu
+            resumo = [
+                {"nome": h["nome"], "total": h["total"], "salvo_em": h.get("salvo_em", "")}
+                for h in historico
+            ]
+            self.send_json({'ok': True, 'historico': resumo})
+
+        # ── /historico/carregar?nome=X → retorna rota completa ───────
+        elif self.path.startswith('/historico/carregar'):
+            from urllib.parse import urlparse, parse_qs
+            qs   = parse_qs(urlparse(self.path).query)
+            nome = qs.get('nome', [''])[0]
+            historico = carregar_historico()
+            entrada = next((h for h in historico if h.get('nome') == nome), None)
+            if entrada:
+                self.send_json({'ok': True, **entrada})
+            else:
+                self.send_json({'ok': False, 'erro': 'Rota não encontrada no histórico.'}, 404)
         else:
             self.send_response(404)
             self.end_headers()
@@ -326,6 +387,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # Lê o rota_processada_final.xlsx gerado
                 rows, headers = ler_processado()
                 _dados_cache = (rows, headers)
+                # Salva no histórico
+                nome_arq = Path(ARQ_PROCESSADO).name
+                adicionar_ao_historico(nome_arq, rows, headers)
                 print(f"  [PIPELINE] ✅ {len(rows)} endereços carregados de {ARQ_PROCESSADO}")
                 self.send_json({'ok': True, 'total': len(rows)})
 
@@ -340,7 +404,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def main():
+    def do_DELETE(self):
+        from urllib.parse import urlparse, parse_qs
+        if self.path.startswith('/historico/apagar'):
+            qs   = parse_qs(urlparse(self.path).query)
+            nome = qs.get('nome', [''])[0]
+            historico = carregar_historico()
+            novo = [h for h in historico if h.get('nome') != nome]
+            salvar_historico(novo)
+            self.send_json({'ok': True})
+        else:
+            self.send_response(404)
+            self.end_headers()
     auth_status = "ATIVADO (login exigido)" if (APP_USER and APP_PASS) else "DESATIVADO (sem login)"
     print(f"""
 ╔══════════════════════════════════════════════════╗

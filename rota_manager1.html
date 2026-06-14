@@ -69,7 +69,87 @@
   header .badge.show { display: block; }
   header .badge b { color: var(--accent2); }
 
-  /* ── Toolbar ── */
+  /* ── Painel Histórico ── */
+  #hist-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #hist-overlay.show { display: flex; }
+  #hist-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 340px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+    animation: slideIn .18s ease;
+  }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  #hist-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #hist-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #hist-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #hist-header .close-btn:hover { color: var(--text); }
+  #hist-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .hist-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color .15s;
+    position: relative;
+  }
+  .hist-item:hover { border-color: var(--accent2); }
+  .hist-item.ativo { border-color: var(--accent); background: rgba(245,158,11,.07); }
+  .hist-item-nome { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; word-break: break-all; }
+  .hist-item-info { font-size: 11px; color: var(--muted); }
+  .hist-item-info b { color: var(--accent2); }
+  .hist-del {
+    position: absolute; top: 8px; right: 8px;
+    background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1;
+    opacity: .5; transition: opacity .15s;
+  }
+  .hist-del:hover { opacity: 1; color: var(--danger); }
+  #hist-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+  /* botão histórico no header */
+  .btn-hist {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: border-color .15s;
+    white-space: nowrap;
+  }
+  .btn-hist:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  @media (max-width: 640px) {
+    #hist-panel { width: 100vw; }
+    .btn-hist span.label { display: none; }
+  }
   .toolbar {
     background: var(--surface2);
     border-bottom: 1px solid var(--border);
@@ -660,10 +740,27 @@
   </div>
 </div>
 
+<!-- ══ PAINEL HISTÓRICO ══ -->
+<div id="hist-overlay" onclick="fecharHistorico(event)">
+  <div id="hist-panel">
+    <div id="hist-header">
+      <span>🗂</span>
+      <span class="title">Histórico de Rotas</span>
+      <button class="close-btn" onclick="fecharHistorico()">✕</button>
+    </div>
+    <div id="hist-list">
+      <div id="hist-empty">Nenhuma rota no histórico ainda.</div>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="logo">🗺 ROTA<span>MANAGER</span></div>
   <div class="spacer"></div>
   <div class="badge" id="file-badge"></div>
+  <button class="btn-hist" id="btn-hist" onclick="abrirHistorico()" style="display:none">
+    🗂 <span class="label">Histórico</span>
+  </button>
   <div class="header-user" id="header-user" style="display:none">
     <span>👤</span><span class="user-name" id="header-username"></span>
     <button class="btn-logout" onclick="fazerLogout()">Sair</button>
@@ -1678,8 +1775,21 @@ async function checarServidor() {
       : '⚠️ Rode <b>servidor.py</b> na mesma pasta antes de usar';
     el.style.color = _serverOnline ? 'var(--green)' : 'var(--danger)';
   }
+
+  // Mostra botão histórico assim que servidor conectar
+  if (_serverOnline) document.getElementById('btn-hist').style.display = '';
 }
-checarServidor();
+
+let _restaurouUmaVez = false;
+async function checarServidorInit() {
+  await checarServidor();
+  // Ao conectar pela primeira vez, tenta restaurar última rota
+  if (_serverOnline && !_restaurouUmaVez && !_allRows.length) {
+    _restaurouUmaVez = true;
+    await tentarRestaurarUltimaRota();
+  }
+}
+checarServidorInit();
 setInterval(checarServidor, 5000);
 
 // Ao escolher arquivo: envia pro servidor e roda pipeline automaticamente
@@ -1721,28 +1831,7 @@ async function processarComServidor(file) {
     if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 
     // 4) Popula a tabela
-    _headers = dado.headers || [];
-    _allRows = dado.rows    || [];
-
-    // Detecta índices de lat/lon/coord nos headers recebidos
-    const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
-    _colLat  = hUp.findIndex(h => /LATITUDE|LAT/.test(h));
-    _colLon  = hUp.findIndex(h => /LONGITUDE|LON|LNG/.test(h));
-    _colCoor = hUp.findIndex(h => /COORDENADAS|COORD/.test(h));
-    if (_colLat  < 0) _colLat  = null;
-    if (_colLon  < 0) _colLon  = null;
-    if (_colCoor < 0) _colCoor = null;
-
-    hideLoading();
-    renderTable(_allRows);
-    updateStats(_allRows);
-
-    document.getElementById('file-badge').innerHTML =
-      `📄 <b>rota_processada_final.xlsx</b> — ${_allRows.length} endereços`;
-    document.getElementById('file-badge').classList.add('show');
-    document.getElementById('table-section').classList.add('show');
-    document.getElementById('drop-zone').style.display = 'none';
-    document.getElementById('toolbar').style.display = 'flex';
+    mostrarRotaNoApp(dado.rows || [], dado.headers || [], 'rota_processada_final.xlsx');
 
   } catch(err) {
     hideLoading();
@@ -1753,6 +1842,127 @@ async function processarComServidor(file) {
 
 // Mantém função vazia para não quebrar referências antigas
 async function rodarPipeline() {}
+
+// ── Exibe dados no app (usado pelo histórico e pelo pipeline) ─────────
+function mostrarRotaNoApp(rows, headers, nomeArquivo) {
+  _headers = headers || [];
+  _allRows = rows    || [];
+
+  const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
+  _colLat  = hUp.findIndex(h => /LATITUDE|LAT/.test(h));
+  _colLon  = hUp.findIndex(h => /LONGITUDE|LON|LNG/.test(h));
+  _colCoor = hUp.findIndex(h => /COORDENADAS|COORD/.test(h));
+  if (_colLat  < 0) _colLat  = null;
+  if (_colLon  < 0) _colLon  = null;
+  if (_colCoor < 0) _colCoor = null;
+
+  hideLoading();
+  renderTable(_allRows);
+  updateStats(_allRows);
+
+  document.getElementById('file-badge').innerHTML =
+    `📄 <b>${escHtml(nomeArquivo)}</b> — ${_allRows.length} endereços`;
+  document.getElementById('file-badge').classList.add('show');
+  document.getElementById('table-section').classList.add('show');
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('btn-hist').style.display = '';
+
+  _nomeAtual = nomeArquivo;
+  renderHistoricoPanel();
+}
+
+// ══════════════════════════════════════════════════════════
+//  HISTÓRICO DE ROTAS
+// ══════════════════════════════════════════════════════════
+let _nomeAtual = '';
+
+function abrirHistorico() {
+  carregarListaHistorico();
+  document.getElementById('hist-overlay').classList.add('show');
+}
+
+function fecharHistorico(e) {
+  if (e && e.target !== document.getElementById('hist-overlay')) return;
+  document.getElementById('hist-overlay').classList.remove('show');
+}
+
+async function carregarListaHistorico() {
+  try {
+    const r = await fetch(SERVER + '/historico');
+    const d = await r.json();
+    if (!d.ok) return;
+    renderHistoricoLista(d.historico || []);
+  } catch(e) {
+    document.getElementById('hist-list').innerHTML =
+      '<div id="hist-empty">Não foi possível carregar o histórico.</div>';
+  }
+}
+
+function renderHistoricoLista(lista) {
+  const el = document.getElementById('hist-list');
+  if (!lista.length) {
+    el.innerHTML = '<div id="hist-empty">Nenhuma rota no histórico ainda.<br>Importe um arquivo .xlsx para começar.</div>';
+    return;
+  }
+  el.innerHTML = lista.map(h => `
+    <div class="hist-item ${h.nome === _nomeAtual ? 'ativo' : ''}" onclick="carregarDoHistorico('${escHtml(h.nome)}')">
+      <button class="hist-del" title="Remover do histórico"
+        onclick="event.stopPropagation(); apagarDoHistorico('${escHtml(h.nome)}')">✕</button>
+      <div class="hist-item-nome">📄 ${escHtml(h.nome)}</div>
+      <div class="hist-item-info">
+        <b>${h.total}</b> endereços · ${escHtml(h.salvo_em || '')}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function carregarDoHistorico(nome) {
+  document.getElementById('hist-overlay').classList.remove('show');
+  showLoading(`Carregando "${nome}"...`);
+  try {
+    const r = await fetch(SERVER + '/historico/carregar?nome=' + encodeURIComponent(nome));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro ao carregar');
+    mostrarRotaNoApp(d.rows, d.headers, d.nome);
+  } catch(err) {
+    hideLoading();
+    document.getElementById('drop-zone').style.display = 'flex';
+    alert('❌ Erro ao carregar do histórico: ' + err.message);
+  }
+}
+
+async function apagarDoHistorico(nome) {
+  if (!confirm(`Remover "${nome}" do histórico?`)) return;
+  try {
+    await fetch(SERVER + '/historico/apagar?nome=' + encodeURIComponent(nome), { method: 'DELETE' });
+    carregarListaHistorico();
+    if (_nomeAtual === nome) _nomeAtual = '';
+  } catch(e) { alert('Erro ao remover.'); }
+}
+
+function renderHistoricoPanel() { /* chamado ao carregar rota — já atualiza badge ativo */ }
+
+// ── Auto-restaurar última rota ao dar F5 ─────────────────────────────
+async function tentarRestaurarUltimaRota() {
+  try {
+    const r = await fetch(SERVER + '/historico');
+    const d = await r.json();
+    if (!d.ok || !d.historico.length) return;
+    const ultima = d.historico[0];
+    // Carrega a rota completa automaticamente
+    const r2 = await fetch(SERVER + '/historico/carregar?nome=' + encodeURIComponent(ultima.nome));
+    const d2  = await r2.json();
+    if (!d2.ok) return;
+    mostrarRotaNoApp(d2.rows, d2.headers, d2.nome);
+    // Avisa discretamente
+    const status = document.getElementById('server-status');
+    if (status) {
+      status.innerHTML = `✅ Rota restaurada automaticamente: <b>${escHtml(d2.nome)}</b>`;
+      status.style.color = 'var(--green)';
+    }
+  } catch(e) { /* silencioso, não quebra o fluxo */ }
+}
 
 
 // ══════════════════════════════════════════════════════════
