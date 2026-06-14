@@ -1331,8 +1331,12 @@ function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
     return parseFloat(p[1]) || -49.2925;
   })();
 
-  const HERE_KEY = 'P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M';
-  const html = getMapHtml(HERE_KEY, lat, lng, endReformado, endOriginal, rowIdx);
+  if (!_mapKeys.here_key || !_mapKeys.google_key) {
+    alert('⚠️ Chaves de mapa não carregadas. Faça login novamente e tente de novo.');
+    return;
+  }
+
+  const html = getMapHtml(_mapKeys.here_key, _mapKeys.google_key, lat, lng, endReformado, endOriginal, rowIdx, _token, window.location.origin);
 
   const win = window.open('', '_blank', 'width=1280,height=860');
   if (!win) { alert('Permita pop-ups para este site e tente novamente.'); return; }
@@ -1341,7 +1345,7 @@ function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
   win.document.close();
 }
 
-function getMapHtml(hereKey, initLat, initLng, endReformado, endOriginal, rowIdx) {
+function getMapHtml(hereKey, googleKey, initLat, initLng, endReformado, endOriginal, rowIdx, authToken, origin) {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1608,7 +1612,7 @@ hereMap.addEventListener('tap', e => {
 
 // ── Google Maps iframe ────────────────────────────────────────────────
 // ── Google Maps JavaScript API ───────────────────────────────────────
-const GKEY = 'AIzaSyAaESp78MrYmySlHiupJKjjgCi0-1dfWnE';
+const GKEY = '${googleKey}';
 let googleMap = null;
 let googleMarker = null;
 let _googleReady = false;
@@ -1731,8 +1735,11 @@ async function geocode(query) {
   const c = parseCoords(query);
   if (c) { moveMap(c.lat, c.lng, c.lat.toFixed(6) + ', ' + c.lng.toFixed(6)); return; }
   try {
-    const r = await fetch('https://geocode.search.hereapi.com/v1/geocode?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil') + '&apiKey=' + HERE_KEY + '&limit=1&lang=pt-BR');
+    const r = await fetch('${origin}/api/geocode?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil'), {
+      headers: { 'Authorization': 'Bearer ${authToken}' }
+    });
     const d = await r.json();
+    if (!d.ok) { document.getElementById('status-bar').textContent = d.erro || 'Erro na busca.'; return; }
     if (d.items?.length) moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title);
     else document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado.';
   } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca.'; }
@@ -1742,8 +1749,11 @@ async function autosuggest(query) {
   if (parseCoords(query)) { hideSugg(); return; }
   if (query.length < 3) { hideSugg(); return; }
   try {
-    const r = await fetch('https://autosuggest.search.hereapi.com/v1/autosuggest?q=' + encodeURIComponent(query + ', Goiânia') + '&at=-16.7159,-49.2925&apiKey=' + HERE_KEY + '&limit=6&lang=pt-BR&in=countryCode:BRA');
+    const r = await fetch('${origin}/api/autosuggest?q=' + encodeURIComponent(query + ', Goiânia') + '&at=-16.7159,-49.2925', {
+      headers: { 'Authorization': 'Bearer ${authToken}' }
+    });
     const d = await r.json();
+    if (!d.ok) { hideSugg(); return; }
     const items = (d.items || []).filter(i => i.position);
     if (!items.length) { hideSugg(); return; }
     suggestionsEl.innerHTML = '';
@@ -1777,6 +1787,31 @@ function escHtmlInline(s) {
 const SERVER = '';
 let _serverOnline = false;
 
+// ── Token de autenticação (em memória; persistido via sessionStorage) ──
+let _token = null;
+let _mapKeys = { here_key: '', google_key: '' };
+let _appIniciado = false;
+
+// ── fetch autenticado: adiciona Authorization e trata sessão expirada ──
+async function apiFetch(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  if (_token) headers['Authorization'] = 'Bearer ' + _token;
+  const resp = await fetch(SERVER + path, Object.assign({}, options, { headers }));
+  if (resp.status === 401) {
+    await sessaoExpirada();
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+  return resp;
+}
+
+async function sessaoExpirada() {
+  _token = null;
+  clearSession();
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('header-user').style.display = 'none';
+  showError('Sua sessão expirou. Faça login novamente.');
+}
+
 async function checarServidor() {
   try {
     const r = await fetch(SERVER + '/ping', { signal: AbortSignal.timeout(900) });
@@ -1804,8 +1839,8 @@ async function checarServidorInit() {
     await tentarRestaurarUltimaRota();
   }
 }
-checarServidorInit();
-setInterval(checarServidor, 5000);
+
+// checarServidorInit() e o intervalo só começam depois do login (ver entrarNoApp)
 
 // Ao escolher arquivo: envia pro servidor e roda pipeline automaticamente
 function handleFile(event) {
@@ -1830,18 +1865,18 @@ async function processarComServidor(file) {
     // 1) Upload do rota.xlsx
     const fd = new FormData();
     fd.append('arquivo', file, 'rota.xlsx');
-    const up = await fetch(SERVER + '/upload', { method: 'POST', body: fd });
+    const up = await apiFetch('/upload', { method: 'POST', body: fd });
     if (!up.ok) throw new Error('Falha no upload');
 
     // 2) Roda tratamento_dados.py
     document.getElementById('loading-msg').textContent = 'Rodando tratamento_dados.py...';
-    const pipe = await fetch(SERVER + '/pipeline', { method: 'POST' });
+    const pipe = await apiFetch('/pipeline', { method: 'POST' });
     const pd   = await pipe.json();
     if (!pd.ok) throw new Error(pd.erro || 'Erro no pipeline');
 
     // 3) Busca o resultado (rota_processada_final.xlsx já lido pelo servidor)
     document.getElementById('loading-msg').textContent = 'Carregando rota_processada_final.xlsx...';
-    const res  = await fetch(SERVER + '/dados');
+    const res  = await apiFetch('/dados');
     const dado = await res.json();
     if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 
@@ -1904,7 +1939,7 @@ function fecharHistorico(e) {
 
 async function carregarListaHistorico() {
   try {
-    const r = await fetch(SERVER + '/historico');
+    const r = await apiFetch('/historico');
     const d = await r.json();
     if (!d.ok) return;
     renderHistoricoLista(d.historico || []);
@@ -1936,7 +1971,7 @@ async function carregarDoHistorico(nome) {
   document.getElementById('hist-overlay').classList.remove('show');
   showLoading(`Carregando "${nome}"...`);
   try {
-    const r = await fetch(SERVER + '/historico/carregar?nome=' + encodeURIComponent(nome));
+    const r = await apiFetch('/historico/carregar?nome=' + encodeURIComponent(nome));
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'Erro ao carregar');
     mostrarRotaNoApp(d.rows, d.headers, d.nome);
@@ -1950,7 +1985,7 @@ async function carregarDoHistorico(nome) {
 async function apagarDoHistorico(nome) {
   if (!confirm(`Remover "${nome}" do histórico?`)) return;
   try {
-    await fetch(SERVER + '/historico/apagar?nome=' + encodeURIComponent(nome), { method: 'DELETE' });
+    await apiFetch('/historico/apagar?nome=' + encodeURIComponent(nome), { method: 'DELETE' });
     carregarListaHistorico();
     if (_nomeAtual === nome) _nomeAtual = '';
   } catch(e) { alert('Erro ao remover.'); }
@@ -1961,12 +1996,12 @@ function renderHistoricoPanel() { /* chamado ao carregar rota — já atualiza b
 // ── Auto-restaurar última rota ao dar F5 ─────────────────────────────
 async function tentarRestaurarUltimaRota() {
   try {
-    const r = await fetch(SERVER + '/historico');
+    const r = await apiFetch('/historico');
     const d = await r.json();
     if (!d.ok || !d.historico.length) return;
     const ultima = d.historico[0];
     // Carrega a rota completa automaticamente
-    const r2 = await fetch(SERVER + '/historico/carregar?nome=' + encodeURIComponent(ultima.nome));
+    const r2 = await apiFetch('/historico/carregar?nome=' + encodeURIComponent(ultima.nome));
     const d2  = await r2.json();
     if (!d2.ok) return;
     mostrarRotaNoApp(d2.rows, d2.headers, d2.nome);
@@ -2045,7 +2080,7 @@ const SESSION_KEY = 'rm_session_v1';
 function getSession() {
   try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
 }
-function saveSession(user) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user })); }
+function saveSession(user, token) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user, token })); }
 function clearSession()    { sessionStorage.removeItem(SESSION_KEY); }
 
 // ── UI helpers ────────────────────────────────────────────────────────
@@ -2106,7 +2141,8 @@ async function fazerLogin() {
     });
     const d = await r.json();
     if (d.ok) {
-      saveSession(d.usuario);
+      _token = d.token;
+      saveSession(d.usuario, d.token);
       entrarNoApp(d.usuario);
     } else {
       showError(d.erro || 'Usuário ou senha incorretos.');
@@ -2161,14 +2197,39 @@ async function cadastrar() {
 }
 
 // ── Entrar no app ─────────────────────────────────────────────────────
-function entrarNoApp(user) {
+async function entrarNoApp(user) {
+  // valida o token e carrega as chaves de mapa (só liberadas para usuário logado)
+  try {
+    const r = await apiFetch('/api/config');
+    const d = await r.json();
+    if (d.ok) _mapKeys = { here_key: d.here_key || '', google_key: d.google_key || '' };
+  } catch (e) {
+    // token inválido/expirado — apiFetch já mostrou a tela de login (sessaoExpirada)
+    return;
+  }
+
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('header-username').textContent = user;
+
+  if (!_appIniciado) {
+    _appIniciado = true;
+    checarServidorInit();
+    setInterval(checarServidor, 5000);
+  }
 }
 
 // ── Sair ──────────────────────────────────────────────────────────────
-function fazerLogout() {
+async function fazerLogout() {
+  try {
+    if (_token) {
+      await fetch(SERVER + '/auth/logout', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
+    }
+  } catch (e) { /* ignora erro de rede no logout */ }
+  _token = null;
   clearSession();
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('header-user').style.display = 'none';
@@ -2181,7 +2242,8 @@ function fazerLogout() {
 // ── Init: verifica sessão ─────────────────────────────────────────────
 (function init() {
   const sess = getSession();
-  if (sess && sess.user) {
+  if (sess && sess.user && sess.token) {
+    _token = sess.token;
     entrarNoApp(sess.user);
   } else {
     setTimeout(() => document.getElementById('in-user').focus(), 100);
