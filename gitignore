@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# arquivos de dados gerados em tempo de execução
+rota.xlsx
+rota_agrupada.xlsx
+rota_processada_final.xlsx
