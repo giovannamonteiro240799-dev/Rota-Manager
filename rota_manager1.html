@@ -1365,7 +1365,11 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 #top-bar .row1 { display:flex; align-items:center; gap:12px; }
 #top-bar .pin { font-size:20px; }
 #top-bar .lbl { color:#f59e0b; font-size:11px; font-weight:bold; letter-spacing:.08em; white-space:nowrap; }
-#top-bar .addr { color:#fff; font-size:14px; font-weight:bold; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#top-bar .addr { color:#fff; font-size:14px; font-weight:bold; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; border-radius:4px; padding:2px 6px; transition:background .15s; }
+#top-bar .addr:hover { background:rgba(245,158,11,.18); color:#f59e0b; }
+#top-bar .addr:active { background:rgba(245,158,11,.32); }
+#copy-toast { position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(20px); background:#22c55e; color:#fff; font-size:13px; font-weight:bold; padding:8px 22px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+#copy-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 #top-bar .orig { color:#94a3b8; font-size:12px; padding-left:32px; line-height:1.35; white-space:normal; word-break:break-word; }
 #coord-bar {
   display:flex; align-items:center; gap:10px;
@@ -1462,7 +1466,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
   <div class="row1">
     <span class="pin">📍</span>
     <span class="lbl">ENDEREÇO:</span>
-    <span class="addr">${escHtmlInline(endReformado)}</span>
+    <span class="addr" title="Clique para copiar" onclick="copiarEndereco(this)">${escHtmlInline(endReformado)}</span>
   </div>
   ${endOriginal && endOriginal !== endReformado ? `<div class="orig">${escHtmlInline(endOriginal)}</div>` : ''}
 </div>
@@ -1503,6 +1507,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 </div>
 
 <div id="status-bar">📌 Clique ou arraste o pin para ajustar a localização.</div>
+<div id="copy-toast">✔ Endereço copiado!</div>
 
 <script>
 const HERE_KEY = '${hereKey}';
@@ -1525,6 +1530,16 @@ function copiarCoords() {
     btn.textContent = '✔ Copiado!';
     btn.style.background = '#166534'; btn.style.color = '#86efac';
     setTimeout(() => { btn.textContent = '📋 Copiar'; btn.style.background=''; btn.style.color=''; }, 2000);
+  });
+}
+
+// ── Copiar endereço reformado ──────────────────────────────────────────
+function copiarEndereco(el) {
+  const txt = el.textContent.trim();
+  navigator.clipboard.writeText(txt).then(() => {
+    const toast = document.getElementById('copy-toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
   });
 }
 
