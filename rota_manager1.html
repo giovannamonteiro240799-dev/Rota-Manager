@@ -1489,26 +1489,15 @@ const fab = document.getElementById('fab-agrupar');
 const cnt = document.getElementById('fab-count');
 const n = _selecionados.size;
 cnt.textContent = n;
+fab.classList.toggle('show', n > 0);
 fab.classList.toggle('vazio', n < 2);
 fab.title = n < 2
 ? 'Marque ao menos 2 endereços para agrupar'
 : `Agrupar os ${n} endereços selecionados`;
 }
 
-// Mostra o botão flutuante só quando o usuário rola a tabela pra baixo
-(function configurarScrollFab() {
-const container = document.getElementById('table-section');
-const fab = document.getElementById('fab-agrupar');
-let ticking = false;
-container.addEventListener('scroll', () => {
-if (ticking) return;
-ticking = true;
-requestAnimationFrame(() => {
-fab.classList.toggle('show', container.scrollTop > 80);
-ticking = false;
-});
-});
-})();
+// O botão flutuante aparece sempre que há pelo menos 1 endereço selecionado,
+// independente de scroll.
 
 // Junta manualmente os endereços marcados em um único grupo
 function agruparSelecionados() {
