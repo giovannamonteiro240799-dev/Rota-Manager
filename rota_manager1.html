@@ -365,6 +365,55 @@ color: var(--muted);
 font-size: 11px;
 }
 
+/* ── Lista de endereços individuais dentro de um grupo ── */
+.membros-list {
+margin-top: 6px;
+display: flex;
+flex-direction: column;
+gap: 3px;
+}
+.membro-item {
+display: flex;
+align-items: center;
+gap: 6px;
+font-size: 11px;
+color: var(--muted);
+background: rgba(255,255,255,.02);
+border: 1px solid rgba(255,255,255,.05);
+border-radius: 6px;
+padding: 3px 6px;
+}
+.membro-item .membro-stop {
+font-family: var(--mono);
+color: var(--accent2);
+font-weight: 700;
+white-space: nowrap;
+}
+.membro-item .membro-orig {
+flex: 1;
+word-break: break-word;
+}
+.btn-ungroup {
+flex-shrink: 0;
+width: 18px;
+height: 18px;
+border-radius: 5px;
+border: 1px solid rgba(239,68,68,.4);
+background: rgba(239,68,68,.12);
+color: #ef4444;
+font-size: 11px;
+line-height: 1;
+cursor: pointer;
+display: flex;
+align-items: center;
+justify-content: center;
+transition: .15s;
+}
+.btn-ungroup:hover {
+background: #ef4444;
+color: #fff;
+}
+
 /* Botão de mapa */
 .btn-map {
 width: 34px; height: 34px;
@@ -1179,17 +1228,9 @@ reader.readAsArrayBuffer(file);
 }
 
 function updateStats(rows) {
-// Conta linhas únicas (colapsando grupos)
-const seenG = new Set();
-let uniq = 0;
-for (const r of rows) {
-const gid = r.group_size > 1 ? r.group_id : null;
-if (gid !== null) { if (!seenG.has(gid)) { seenG.add(gid); uniq++; } }
-else uniq++;
-}
-const grupos   = seenG.size;
+const grupos   = rows.filter(r => r.group_size > 1).length;
 const comCoord = rows.filter(r => r.coord).length;
-document.getElementById('st-total').textContent = uniq;
+document.getElementById('st-total').textContent = rows.length;
 document.getElementById('st-grupos').textContent = grupos;
 document.getElementById('st-coord').textContent = comCoord;
 document.getElementById('stats-bar').classList.add('show');
@@ -1202,23 +1243,7 @@ tbody.innerHTML = '';
 if (!rows.length) {
 tbody.innerHTML = '<tr><td colspan="5" class="empty-filter">Nenhum endereço encontrado.</td></tr>';
 } else {
-// ── Colapsa grupos: 1 linha por group_id ──────────────────────────
-const seenGroups = new Set();
-const displayRows = [];
 for (const row of rows) {
-const gid = row.group_id !== undefined ? row.group_id : null;
-if (row.group_size > 1 && gid !== null) {
-if (seenGroups.has(gid)) continue; // já adicionou esse grupo
-seenGroups.add(gid);
-// Coleta todos os originais do grupo para exibir expandido
-const membros = rows.filter(r => r.group_id === gid);
-displayRows.push({ ...row, _membros: membros });
-} else {
-displayRows.push({ ...row, _membros: [row] });
-}
-}
-
-for (const row of displayRows) {
 const tr = document.createElement('tr');
 if (row.group_size > 1) tr.classList.add('grouped');
 
@@ -1226,18 +1251,16 @@ const hasCoord   = !!row.coord;
 const coordText  = row.coord || '—';
 const endReformado = row.group_label || standardize(row.address) || row.address;
 
-// Stops únicos do grupo
-const stops = [...new Set(row._membros.map(m => m.stop).filter(Boolean))].sort();
-const stopsStr = stops.join(', ');
+const membros = Array.isArray(row.membros) && row.membros.length
+? row.membros
+: [{ stop: row.stop, original: row.endereco_original || row.address }];
 
-// Originais únicos do grupo (para exibir abaixo do endereço reformado)
-const originais = [...new Set(row._membros.map(m => (m.endereco_original || m.address)).filter(Boolean))];
+const stopsStr = membros.map(m => m.stop).filter(Boolean).join(', ') || row.group_stops || row.stop || '';
 
 // Badge de grupo
 let grupoHtml;
 if (row.group_size > 1) {
 grupoHtml = `<span class="badge-group">✕${row.group_size}</span>`;
-if (stopsStr) grupoHtml += `<div style="font-size:10px;color:var(--muted);margin-top:3px">Stop: ${escHtml(stopsStr)}</div>`;
 } else {
 grupoHtml = '<span class="badge-single">—</span>';
 }
@@ -1251,26 +1274,32 @@ btnMap.title = hasCoord ? 'Abrir no mapa: ' + row.coord : 'Abrir no mapa';
 btnMap.textContent = '📍';
 btnMap.dataset.coord     = row.coord || '';
 btnMap.dataset.reformado = endReformado;
-btnMap.dataset.original  = originais[0] || '';
-btnMap.dataset.idx       = _allRows.indexOf(row._membros ? row._membros[0] : row);
+btnMap.dataset.original  = membros[0] ? membros[0].original : '';
+btnMap.dataset.idx       = _allRows.indexOf(row);
 btnMap.addEventListener('click', () => {
 abrirMapa(btnMap.dataset.coord, btnMap.dataset.reformado, btnMap.dataset.original, parseInt(btnMap.dataset.idx));
 });
 tdAction.appendChild(btnMap);
 tr.appendChild(tdAction);
 
-// Originais: mostra todos do grupo em linhas menores
-const originaisHtml = originais.map((o, i) =>
-o !== endReformado
-? `<div class="td-addr-original">${escHtml(o)}</div>`
-: ''
-).join('');
+// Quando agrupado, lista TODOS os endereços originais do grupo,
+// cada um com botão para tirar especificamente aquele item do grupo.
+let membrosHtml = '';
+if (row.group_size > 1) {
+membrosHtml = `<div class="membros-list">` + membros.map((m, mi) => `
+       <div class="membro-item">
+         ${m.stop ? `<span class="membro-stop">Stop ${escHtml(m.stop)}</span>` : ''}
+         <span class="membro-orig">${escHtml(m.original)}</span>
+         <button class="btn-ungroup" data-cid="${row._cid}" data-mi="${mi}" title="Tirar este endereço do grupo">✕</button>
+       </div>
+     `).join('') + `</div>`;
+}
 
 tr.insertAdjacentHTML('beforeend', `
-       <td class="td-stop">${escHtml(stopsStr || row.stop || '—')}</td>
+       <td class="td-stop">${escHtml(stopsStr || '—')}</td>
        <td class="td-addr${row._editado ? ' coord-editada' : ''}">
          <div class="td-addr-reformado">${escHtml(endReformado)}</div>
-         ${originaisHtml}
+         ${membrosHtml}
        </td>
        <td class="td-grupo">${grupoHtml}</td>
        <td class="td-coord ${hasCoord ? '' : 'no-coord'}">${escHtml(coordText)}</td>
@@ -1281,6 +1310,69 @@ tbody.appendChild(tr);
 
 document.getElementById('table-section').classList.add('show');
 updateCountBadge(rows.length);
+}
+
+// Delegação de evento: botão "✕" tira um endereço específico do grupo
+document.getElementById('table-body').addEventListener('click', (e) => {
+const btn = e.target.closest('.btn-ungroup');
+if (!btn) return;
+const cid = parseInt(btn.dataset.cid);
+const mi  = parseInt(btn.dataset.mi);
+if (confirm('Tirar este endereço do grupo? Ele passará a ser uma rota separada.')) {
+desagruparMembro(cid, mi);
+}
+});
+
+let _nextGroupId = 1;
+let _nextCid = 1;
+
+function desagruparMembro(cid, memberIndex) {
+const idx = _allRows.findIndex(r => r._cid === cid);
+if (idx === -1) return;
+const row = _allRows[idx];
+if (!Array.isArray(row.membros) || row.membros.length <= 1) return;
+
+const removido = row.membros.splice(memberIndex, 1)[0];
+if (!removido) return;
+
+// Recalcula o grupo que ficou para trás
+row.group_size  = row.membros.length;
+row.group_stops = row.membros.map(m => m.stop).filter(Boolean).join(', ');
+const origsRestantes = [];
+for (const m of row.membros) {
+if (m.original && !origsRestantes.includes(m.original)) origsRestantes.push(m.original);
+}
+row.endereco_original = origsRestantes.join(' | ');
+if (row.group_size === 1) {
+// Sobrou só 1: vira um endereço comum (não mais "agrupado")
+const unico = row.membros[0];
+row.group_label = standardize(unico.original) || unico.original;
+row.address      = row.group_label;
+}
+
+// Cria uma linha independente para o item retirado do grupo
+const novaLinha = {
+raw_row: row.raw_row,
+stop: removido.stop,
+address: standardize(removido.original) || removido.original,
+endereco_original: removido.original,
+coord: '',
+lat: '',
+lon: '',
+group_id: _nextGroupId++,
+group_label: standardize(removido.original) || removido.original,
+group_stops: '',
+group_size: 1,
+membros: [{ stop: removido.stop, original: removido.original }],
+_cid: _nextCid++,
+_editado: false,
+};
+
+_allRows.splice(idx + 1, 0, novaLinha);
+
+const q = document.getElementById('filter-input').value.trim();
+if (q) filtrarTabela(); else renderTable(_allRows);
+updateStats(_allRows);
 }
 
 function escHtml(s) {
@@ -1298,7 +1390,8 @@ const label = (r.group_label || r.address || '').toUpperCase();
 const orig  = (r.address || '').toUpperCase();
 const stop  = (r.stop || '').toUpperCase();
 const coord = (r.coord || '').toUpperCase();
-return label.includes(q) || orig.includes(q) || stop.includes(q) || coord.includes(q);
+const membrosTxt = (r.membros || []).map(m => `${m.stop} ${m.original}`).join(' ').toUpperCase();
+return label.includes(q) || orig.includes(q) || stop.includes(q) || coord.includes(q) || membrosTxt.includes(q);
 });
 renderTable(filtered);
 }
@@ -1851,7 +1944,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 
 // 4) Popula a tabela
     _headers = dado.headers || [];
-    _allRows = dado.rows    || [];
+    _allRows = normalizarLinhas(dado.rows || []);
 
     // Detecta índices de lat/lon/coord nos headers recebidos
     const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
@@ -1884,10 +1977,28 @@ alert('❌ Erro: ' + err.message);
 // Mantém função vazia para não quebrar referências antigas
 async function rodarPipeline() {}
 
+// Garante que toda linha tenha .membros e um _cid único e estável,
+// usado para localizar a linha certa ao desagrupar um item.
+function normalizarLinhas(rows) {
+let maxGid = 0;
+const norm = (rows || []).map((r, i) => {
+const row = { ...r };
+row._cid = i + 1;
+if (!Array.isArray(row.membros) || !row.membros.length) {
+row.membros = [{ stop: row.stop || '', original: row.endereco_original || row.address || '' }];
+}
+if (typeof row.group_id === 'number' && row.group_id > maxGid) maxGid = row.group_id;
+return row;
+});
+_nextCid     = norm.length + 1;
+_nextGroupId = maxGid + 1;
+return norm;
+}
+
 // ── Exibe dados no app (usado pelo histórico e pelo pipeline) ─────────
 function mostrarRotaNoApp(rows, headers, nomeArquivo) {
   _headers = headers || [];
-  _allRows = rows    || [];
+  _allRows = normalizarLinhas(rows);
 
   const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
   _colLat  = hUp.findIndex(h => /LATITUDE|LAT/.test(h));

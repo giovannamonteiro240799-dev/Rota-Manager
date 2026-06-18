@@ -155,6 +155,7 @@ def ler_processado():
     col_count  = find_col([r'rotas_iguais'])
     col_stops  = find_col([r'stops do grupo'])
     col_orig   = find_col([r'endere.o_original', r'original'])
+    col_membros = find_col([r'membros.?json', r'membros'])
 
     rows = []
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
@@ -168,12 +169,38 @@ def ler_processado():
         lon   = g(col_lon)
         coord = g(col_coord) or (f"{lat},{lon}" if lat and lon else '')
         count = int(g(col_count) or 1)
+        endereco_original = g(col_orig)
+
+        membros = []
+        membros_raw = g(col_membros)
+        if membros_raw:
+            try:
+                parsed = json.loads(membros_raw)
+                if isinstance(parsed, list):
+                    membros = [
+                        {'stop': str(m.get('stop', '')), 'original': str(m.get('original', ''))}
+                        for m in parsed if isinstance(m, dict)
+                    ]
+            except Exception:
+                membros = []
+
+        if not membros:
+            # Arquivo gerado por uma versão antiga do pipeline (sem MEMBROS_JSON):
+            # monta uma lista simples a partir do que já temos, para não quebrar o app.
+            stops_fallback = [s.strip() for s in g(col_stops).replace('Stop:', '').split(',') if s.strip()]
+            origs_fallback = [o.strip() for o in endereco_original.split('|') if o.strip()]
+            n = max(len(stops_fallback), len(origs_fallback), 1)
+            for k in range(n):
+                membros.append({
+                    'stop': stops_fallback[k] if k < len(stops_fallback) else g(col_stop),
+                    'original': origs_fallback[k] if k < len(origs_fallback) else (endereco_original or g(col_addr)),
+                })
 
         rows.append({
             'raw_row':           ['' if v is None else v for v in row],
             'stop':              g(col_stop),
             'address':           g(col_addr),
-            'endereco_original': g(col_orig),
+            'endereco_original': endereco_original,
             'coord':             coord,
             'lat':               lat,
             'lon':               lon,
@@ -181,6 +208,7 @@ def ler_processado():
             'group_label':       g(col_addr),
             'group_stops':       g(col_stops),
             'group_size':        count,
+            'membros':           membros,
         })
 
     return rows, headers

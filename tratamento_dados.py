@@ -11,6 +11,7 @@ python pipeline_completo.py
 python pipeline_completo.py --passo 2
 """
 
+import json
 import sys
 import re
 import unicodedata
@@ -564,8 +565,26 @@ def consolidate_p2(rows):
         lat_vals = dedup_single([m['lat'] for m in members if m['lat']])
         lon_vals = dedup_single([m['lon'] for m in members if m['lon']])
         zip_val = next((m['zip'] for m in members if m['zip']), '')
-        original_val = next((m['original'] for m in members if m['original']), '')
+
+        originals_seen = []
+        for m in members:
+            o = m['original'].strip()
+            if o and o not in originals_seen:
+                originals_seen.append(o)
+        original_val = ' | '.join(originals_seen)
+
         bairro_val = next((m['bairro'] for m in members if m['bairro']), '')
+
+        # Lista detalhada de cada membro do grupo (stop + endereço original),
+        # usada pelo app para permitir desagrupar um item específico.
+        membros = [
+            {
+                'stop': m['stop'],
+                'original': m['original'] or m['reformado'],
+            }
+            for m in members
+            if m['stop'] or m['original'] or m['reformado']
+        ]
 
         result.append({
             'seq': seq_val,
@@ -579,6 +598,7 @@ def consolidate_p2(rows):
             'lon': lon_vals[0] if lon_vals else '',
             'coord': unique_coords[0] if unique_coords else '',
             'count': len(members),
+            'membros': membros,
         })
 
     return result
@@ -607,6 +627,7 @@ def write_excel_p2(groups, out_path):
         ('OBSERVACAO', '6C3483', 14),
         ('ENDERECO_ORIGINAL', '8B0000', 44),
         ('BAIRRO', '2E5984', 25),
+        ('MEMBROS_JSON', 'FFFFFF', 10),
     ]
 
     for ci, (title, color, width) in enumerate(col_defs, 1):
@@ -616,6 +637,8 @@ def write_excel_p2(groups, out_path):
         c.alignment = CTR
         c.border = bdr
         ws.column_dimensions[get_column_letter(ci)].width = width
+        if title == 'MEMBROS_JSON':
+            ws.column_dimensions[get_column_letter(ci)].hidden = True
 
     ws.row_dimensions[1].height = 28
 
@@ -640,6 +663,7 @@ def write_excel_p2(groups, out_path):
             (9, obs, CTR, Font(name='Arial', size=9, bold=grouped), rfill),
             (10, grp['original'], LFT, Font(name='Arial', size=9), rfill),
             (11, grp['bairro'], LFT, Font(name='Arial', size=9), rfill),
+            (12, json.dumps(grp.get('membros', []), ensure_ascii=False), LFT, Font(name='Arial', size=8), rfill),
         ]
 
         for ci, val, aln, fnt, fill in cells:
