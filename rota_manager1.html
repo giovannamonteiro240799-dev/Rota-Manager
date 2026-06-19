@@ -227,6 +227,17 @@ width: 8px; height: 8px;
 border-radius: 50%;
 margin-right: 4px;
 }
+.check-all-mobile {
+display: none;
+align-items: center;
+gap: 6px;
+cursor: pointer;
+}
+.check-all-mobile input {
+width: 14px; height: 14px;
+accent-color: var(--accent);
+cursor: pointer;
+}
 
 /* ── Drop zone ── */
 #drop-zone {
@@ -545,7 +556,7 @@ color: var(--muted);
 font-size: 14px;
 }
 
-/* ── RESPONSIVO MOBILE ── */
+/* ── RESPONSIVO MOBILE: tabela em formato de cards ── */
 @media (max-width: 640px) {
 /* Header compacto */
 header {
@@ -593,20 +604,77 @@ overflow-x: auto;
 flex-wrap: nowrap;
 }
 .stat-item { white-space: nowrap; }
+.check-all-mobile { display: flex; margin-left: auto; }
 
-/* Tabela scroll horizontal + células compactas */
-#table-section { padding: 0 0 60px; }
-table { font-size: 12px; min-width: 480px; }
-thead th { padding: 8px 10px; font-size: 10px; }
-td { padding: 7px 10px; }
+/* ── Tabela → cards empilhados (sem scroll horizontal) ── */
+#table-section { padding: 0 0 90px; }
 
-.td-addr { max-width: 200px; }
-.td-addr-reformado { font-size: 12px; }
-.td-addr-original { font-size: 10px; }
-.td-coord { font-size: 10px; }
-.td-stop { width: 46px; font-size: 11px; }
+table, thead, tbody, tr, td, th { display: block; width: 100%; }
+table { font-size: 13px; min-width: 0; }
 
-.btn-map { width: 30px; height: 30px; font-size: 14px; }
+thead { position: static; }
+thead tr { display: none; } /* cabeçalho da tabela escondido; os cards têm seus próprios rótulos */
+
+tbody tr {
+position: relative;
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 12px;
+margin: 10px 12px;
+padding: 12px 48px 12px 52px;
+box-shadow: 0 1px 8px rgba(0,0,0,.25);
+}
+tbody tr.grouped { border-color: rgba(245,158,11,.4); }
+tbody tr.tr-selecionada { border-color: var(--accent); }
+tbody tr:hover { background: var(--surface); }
+
+/* Checkbox: ancorado no canto superior esquerdo do card */
+td.td-check {
+position: absolute;
+top: 12px;
+left: 12px;
+width: auto;
+padding: 0;
+}
+
+/* Botão mapa: ancorado no canto superior direito do card */
+td.td-action {
+position: absolute;
+top: 10px;
+right: 10px;
+width: auto;
+padding: 0;
+}
+
+/* Seq: rótulo inline, discreto, acima do endereço */
+td.td-stop {
+width: auto;
+padding: 0 0 6px;
+font-size: 11px;
+}
+td.td-stop::before { content: 'SEQ '; color: var(--muted); font-weight: 700; letter-spacing: .04em; }
+
+/* Endereço: ocupa a linha cheia */
+td.td-addr {
+max-width: none;
+padding: 0 0 6px;
+}
+td.td-addr-reformado { font-size: 14px; }
+
+/* Badge de grupo: alinhado à esquerda, abaixo do endereço */
+td.td-grupo {
+text-align: left;
+padding: 4px 0;
+}
+
+/* Coordenadas: rótulo inline */
+td.td-coord {
+padding: 4px 0 0;
+font-size: 11px;
+}
+td.td-coord::before { content: '📍 '; }
+
+.btn-map { width: 32px; height: 32px; font-size: 15px; }
 }
 
 @media (max-width: 400px) {
@@ -937,6 +1005,10 @@ Escolher arquivo .xlsx
 <span class="stat-item"><span class="dot" style="background:var(--text)"></span><b id="st-total">0</b> endereços</span>
 <span class="stat-item"><span class="dot" style="background:var(--accent)"></span><b id="st-grupos">0</b> agrupados</span>
 <span class="stat-item"><span class="dot" style="background:var(--green)"></span><b id="st-coord">0</b> com coordenadas</span>
+<label class="stat-item check-all-mobile" id="check-all-mobile-wrap">
+<input type="checkbox" id="check-all-mobile" onclick="toggleSelecionarTodos(this.checked); document.getElementById('check-all').checked=this.checked;">
+Selecionar todos
+</label>
 </div>
 
 <!-- Tabela -->
@@ -1759,6 +1831,11 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  #search-bar { padding:6px 10px; }
  #map-toggle-bar { padding:0 10px; height:34px; }
  .tgl-btn { padding:4px 12px; font-size:11px; }
+
+ /* Mapas HERE e Google empilhados (em vez de lado a lado, ilegíveis no celular) */
+ #maps-container { flex-direction: column; }
+ #map-here-wrap { border-right: none; border-bottom: 2px solid #1e3a5f; }
+ #map-here-wrap, #map-google-wrap { flex: 1 1 50%; min-height: 0; }
 }
 </style>
 </head>
