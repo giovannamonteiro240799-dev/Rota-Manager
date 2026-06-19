@@ -187,7 +187,10 @@ def ler_processado():
         if not membros:
             # Arquivo gerado por uma versão antiga do pipeline (sem MEMBROS_JSON):
             # monta uma lista simples a partir do que já temos, para não quebrar o app.
-            stops_fallback = [s.strip() for s in g(col_stops).replace('Stop:', '').split(',') if s.strip()]
+            # Prioriza SEQUENCE (col_stop) sobre STOPs DO GRUPO, pois esta última
+            # pode conter valores repetidos/inconsistentes.
+            seq_fallback = [s.strip() for s in g(col_stop).split(',') if s.strip()]
+            stops_fallback = seq_fallback or [s.strip() for s in g(col_stops).replace('Stop:', '').split(',') if s.strip()]
             origs_fallback = [o.strip() for o in endereco_original.split('|') if o.strip()]
             n = max(len(stops_fallback), len(origs_fallback), 1)
             for k in range(n):

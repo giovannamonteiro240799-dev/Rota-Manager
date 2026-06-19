@@ -550,7 +550,7 @@ def consolidate_p2(rows):
     result = []
     for key, members in groups.items():
         stops = sorted(
-            [m['stop'] for m in members if m['stop']],
+            [(m['seq'] or m['stop']) for m in members if (m['seq'] or m['stop'])],
             key=lambda s: str(s).lstrip('-').zfill(10)
         )
 
@@ -575,15 +575,17 @@ def consolidate_p2(rows):
 
         bairro_val = next((m['bairro'] for m in members if m['bairro']), '')
 
-        # Lista detalhada de cada membro do grupo (stop + endereço original),
+        # Lista detalhada de cada membro do grupo (seq + endereço original),
         # usada pelo app para permitir desagrupar um item específico.
+        # Usa 'seq' (coluna SEQUENCE) pois é o valor único por linha;
+        # 'stop' pode vir de uma coluna auxiliar com valores repetidos.
         membros = [
             {
-                'stop': m['stop'],
+                'stop': m['seq'] or m['stop'],
                 'original': m['original'] or m['reformado'],
             }
             for m in members
-            if m['stop'] or m['original'] or m['reformado']
+            if m['seq'] or m['stop'] or m['original'] or m['reformado']
         ]
 
         result.append({
