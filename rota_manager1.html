@@ -946,7 +946,7 @@ Escolher arquivo .xlsx
 <tr>
 <th style="width:36px"><input type="checkbox" id="check-all" title="Selecionar todos os visíveis" onclick="toggleSelecionarTodos(this.checked)"></th>
 <th>MAPA</th>
-<th>STOP</th>
+<th>SEQ</th>
 <th>ENDEREÇO</th>
 <th>ROTAS_IGUAIS</th>
 <th>COORDENADAS</th>
@@ -1163,7 +1163,7 @@ const stops = members
 .map(m => rows[m].stop)
 .filter(Boolean)
 .sort((a, b) => String(a).padStart(10, '0').localeCompare(String(b).padStart(10, '0')));
-const stopStr = stops.length > 1 ? `Stop: ${stops.join(', ')}` : '';
+const stopStr = stops.length > 1 ? `Seq: ${stops.join(', ')}` : '';
 for (const m of members) {
 rows[m].group_id    = parseInt(root);
 rows[m].group_label = best;
@@ -1195,7 +1195,8 @@ const data = XLSX.utils.sheet_to_json(ws, {header: 1, defval: ''});
 if (!data.length) return [];
 
 const headers = data[0].map(h => String(h || '').trim());
-const colStop = findCol(headers, ['stop', '^c$', '^parada']);
+let colStop = findCol(headers, ['sequence', '^seq', 'stop', '^c$', '^parada']);
+if (colStop === null) colStop = 0; // fallback: coluna A
 const colAddr = findCol(headers, ['destination.?address', 'endere[cç]o', 'address']);
 const colLat  = findCol(headers, ['\\blat\\b', 'latitude']);
 const colLon  = findCol(headers, ['\\blon\\b', '\\blng\\b', 'longitude']);
@@ -1370,7 +1371,7 @@ let membrosHtml = '';
 if (row.group_size > 1) {
 membrosHtml = `<div class="membros-list">` + membros.map((m, mi) => `
        <div class="membro-item">
-         ${m.stop ? `<span class="membro-stop">Stop ${escHtml(m.stop)}</span>` : ''}
+         ${m.stop ? `<span class="membro-stop">Seq ${escHtml(m.stop)}</span>` : ''}
          <span class="membro-orig">${escHtml(m.original)}</span>
          <button class="btn-ungroup" data-cid="${row._cid}" data-mi="${mi}" title="Tirar este endereço do grupo">✕</button>
        </div>
