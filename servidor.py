@@ -20,13 +20,12 @@ import http.server
 import json
 import os
 import re
+import requests
 import secrets
-import smtplib
 import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
 from pathlib import Path
 
 HOST           = os.environ.get('HOST', '0.0.0.0')
@@ -38,12 +37,14 @@ ARQ_ENTRADA    = "rota.xlsx"
 ARQ_PROCESSADO = "rota_processada_final.xlsx"
 TRATAMENTO_PY  = "tratamento_dados.py"
 
-# ── Envio de email (verificação de cadastro) ─────────────────────────────
+# ── Envio de email (verificação de cadastro) — via API HTTPS do Brevo ────
+# SMTP é bloqueado no plano atual do Railway, por isso usamos a API REST
+# (HTTPS, mesmo mecanismo de uma chamada fetch normal — não é bloqueada).
 # Configurado via variáveis de ambiente — nunca hardcoded no código.
-SMTP_HOST  = "smtp.gmail.com"
-SMTP_PORT  = 587
-SMTP_USER  = os.environ.get('SMTP_USER')   # ex: moises.izuna22@gmail.com
-SMTP_PASS  = os.environ.get('SMTP_PASS')   # senha de app de 16 caracteres do Gmail
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
+BREVO_SENDER_EMAIL = os.environ.get('BREVO_SENDER_EMAIL')   # ex: moises.izuna22@gmail.com (verificado no Brevo)
+BREVO_SENDER_NOME  = os.environ.get('BREVO_SENDER_NOME', 'Rota Manager')
 EMAIL_TTL_MINUTOS = 10   # tempo de validade do código de verificação
 
 # ── Diretório de dados persistentes ──────────────────────────────────────
@@ -140,27 +141,32 @@ def _gerar_codigo() -> str:
 
 
 def enviar_codigo_email(destino: str, codigo: str) -> tuple[bool, str]:
-    """Envia o código de verificação por email via SMTP (Gmail). Retorna (ok, erro)."""
-    if not SMTP_USER or not SMTP_PASS:
-        return False, "Servidor não configurado para enviar email (SMTP_USER/SMTP_PASS ausentes)."
+    """Envia o código de verificação por email via API HTTPS do Brevo. Retorna (ok, erro)."""
+    if not BREVO_API_KEY or not BREVO_SENDER_EMAIL:
+        return False, "Servidor não configurado para enviar email (BREVO_API_KEY/BREVO_SENDER_EMAIL ausentes)."
     try:
-        corpo = (
-            f"Seu código de verificação do Rota Manager é: {codigo}\n\n"
-            f"Esse código expira em {EMAIL_TTL_MINUTOS} minutos.\n"
-            f"Se você não solicitou este cadastro, ignore este email."
-        )
-        msg = MIMEText(corpo, 'plain', 'utf-8')
-        msg['Subject'] = "Seu código de verificação — Rota Manager"
-        msg['From']    = SMTP_USER
-        msg['To']      = destino
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(SMTP_USER, [destino], msg.as_string())
-        return True, ""
+        payload = {
+            "sender":      {"name": BREVO_SENDER_NOME, "email": BREVO_SENDER_EMAIL},
+            "to":          [{"email": destino}],
+            "subject":     "Seu código de verificação — Rota Manager",
+            "textContent": (
+                f"Seu código de verificação do Rota Manager é: {codigo}\n\n"
+                f"Esse código expira em {EMAIL_TTL_MINUTOS} minutos.\n"
+                f"Se você não solicitou este cadastro, ignore este email."
+            ),
+        }
+        headers = {
+            "api-key":      BREVO_API_KEY,
+            "Content-Type": "application/json",
+            "Accept":       "application/json",
+        }
+        r = requests.post(BREVO_API_URL, json=payload, headers=headers, timeout=15)
+        if r.status_code in (200, 201):
+            return True, ""
+        return False, f"Brevo retornou erro {r.status_code}: {r.text[:200]}"
     except Exception as e:
         return False, f"Falha ao enviar email: {e}"
+
 
 
 def _limpar_cadastros_expirados():
