@@ -2073,16 +2073,13 @@ function toggleMap(which) {
 
 // ── Barra de busca reage ao mapa ativo (HERE ou Google) ────────────────
 function atualizarBarraBusca() {
+ // Busca sempre via HERE — Google Places/Geocoding exige billing ativado no projeto,
+ // que ainda não está habilitado. O mapa visual do Google continua funcionando normalmente.
  const input = document.getElementById('search-input');
  const icon  = document.getElementById('search-icon');
  hideSugg();
- if (_activeMap === 'google') {
-   input.placeholder = 'Buscar endereço ou lat,lng... (Google)';
-   icon.textContent   = '🌐';
- } else {
-   input.placeholder = 'Buscar endereço ou lat,lng... (HERE)';
-   icon.textContent   = '🔍';
- }
+ input.placeholder = 'Buscar endereço ou lat,lng...';
+ icon.textContent   = '🔍';
 }
 
 // ── Busca ─────────────────────────────────────────────────────────────
@@ -2116,8 +2113,7 @@ function moveMap(lat, lng, title) {
 async function geocode(query) {
  const c = parseCoords(query);
  if (c) { moveMap(c.lat, c.lng, c.lat.toFixed(6) + ', ' + c.lng.toFixed(6)); return; }
- if (_activeMap === 'google') await geocodeGoogle(query);
- else await geocodeHere(query);
+ await geocodeHere(query);
 }
 
 async function geocodeHere(query) {
@@ -2129,66 +2125,10 @@ async function geocodeHere(query) {
  } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca (HERE).'; }
 }
 
-async function geocodeGoogle(query) {
- if (!window.google?.maps) { document.getElementById('status-bar').textContent = 'Google Maps ainda carregando...'; return; }
- const geocoder = new google.maps.Geocoder();
- geocoder.geocode(
-   { address: query + ', Goiânia, GO, Brasil', region: 'br' },
-   (results, status) => {
-     if (status === 'OK' && results?.length) {
-       const res = results[0];
-       moveMap(res.geometry.location.lat(), res.geometry.location.lng(), res.formatted_address);
-     } else {
-       document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado.';
-     }
-   }
- );
-}
-
-let _autocompleteSvc = null;
-let _placesSvc = null;
-async function autosuggestGoogle(query) {
- if (!window.google?.maps?.places) { hideSugg(); return; }
- if (!_autocompleteSvc) _autocompleteSvc = new google.maps.places.AutocompleteService();
- _autocompleteSvc.getPlacePredictions(
-   {
-     input: query + ', Goiânia',
-     componentRestrictions: { country: 'br' },
-     location: new google.maps.LatLng(-16.7159, -49.2925),
-     radius: 20000,
-   },
-   (preds, status) => {
-     if (status !== google.maps.places.PlacesServiceStatus.OK || !preds?.length) { hideSugg(); return; }
-     renderSugg(preds.slice(0, 6).map(p => ({
-       title:   p.structured_formatting?.main_text || p.description,
-       addr:    p.structured_formatting?.secondary_text || '',
-       placeId: p.place_id,
-     })));
-   }
- );
-}
-
-// Resolve lat/lng de um place_id do Google (autocomplete não devolve coordenadas)
-async function resolverPlaceId(placeId, title) {
- if (!window.google?.maps?.places) { document.getElementById('status-bar').textContent = 'Google Maps ainda carregando...'; return; }
- if (!_placesSvc) _placesSvc = new google.maps.places.PlacesService(googleMap);
- _placesSvc.getDetails(
-   { placeId, fields: ['geometry', 'formatted_address'] },
-   (place, status) => {
-     if (status === google.maps.places.PlacesServiceStatus.OK && place?.geometry) {
-       moveMap(place.geometry.location.lat(), place.geometry.location.lng(), title || place.formatted_address);
-     } else {
-       document.getElementById('status-bar').textContent = 'Não foi possível obter coordenadas.';
-     }
-   }
- );
-}
-
 async function autosuggest(query) {
  if (parseCoords(query)) { hideSugg(); return; }
  if (query.length < 3) { hideSugg(); return; }
- if (_activeMap === 'google') await autosuggestGoogle(query);
- else await autosuggestHere(query);
+ await autosuggestHere(query);
 }
 
 async function autosuggestHere(query) {
@@ -2212,10 +2152,7 @@ function renderSugg(items) {
    const div = document.createElement('div');
    div.className = 'sugg-item';
    div.innerHTML = '<div class="sugg-title">' + item.title + '</div><div class="sugg-addr">' + (item.addr||'') + '</div>';
-   div.addEventListener('click', () => {
-     if (item.placeId) resolverPlaceId(item.placeId, item.title);
-     else moveMap(item.lat, item.lng, item.title);
-   });
+   div.addEventListener('click', () => moveMap(item.lat, item.lng, item.title));
    suggestionsEl.appendChild(div);
  });
  suggestionsEl.style.display = 'block';
