@@ -149,6 +149,16 @@ def salvar_usuarios(users: dict):
     )
 
 
+def _buscar_usuario(users: dict, username: str):
+    """Busca um usuário ignorando maiúsculas/minúsculas no nome de login.
+    Retorna (chave_original, dados) ou (None, None) se não encontrado."""
+    alvo = username.strip().lower()
+    for chave, dados in users.items():
+        if chave.lower() == alvo:
+            return chave, dados
+    return None, None
+
+
 def cadastrar_usuario(username: str, senha: str) -> tuple[bool, str]:
     username = username.strip()
     if not username or len(username) < 3:
@@ -156,7 +166,8 @@ def cadastrar_usuario(username: str, senha: str) -> tuple[bool, str]:
     if not senha or len(senha) < 4:
         return False, "Senha deve ter pelo menos 4 caracteres."
     users = carregar_usuarios()
-    if username in users:
+    chave_existente, _ = _buscar_usuario(users, username)
+    if chave_existente is not None:
         return False, "Usuário já existe."
     users[username] = {
         "id":   str(uuid.uuid4()),
@@ -166,11 +177,12 @@ def cadastrar_usuario(username: str, senha: str) -> tuple[bool, str]:
     return True, "Usuário cadastrado com sucesso."
 
 
-def autenticar_usuario(username: str, senha: str) -> str | None:
-    """Retorna o user_id se credenciais corretas, None caso contrário."""
+def autenticar_usuario(username: str, senha: str) -> tuple[str, str] | None:
+    """Retorna (user_id, nome_original) se credenciais corretas, None caso contrário.
+    O nome de usuário não diferencia maiúsculas/minúsculas; a senha sim."""
     users = carregar_usuarios()
-    u = users.get(username)
-    if not u:
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
         return None
     if u.get("hash") != _hash_senha(senha):
         return None
@@ -178,7 +190,7 @@ def autenticar_usuario(username: str, senha: str) -> str | None:
     if not u.get("id"):
         u["id"] = str(uuid.uuid4())
         salvar_usuarios(users)
-    return u["id"]
+    return u["id"], chave
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -440,10 +452,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             usuario = data.get('usuario', '').strip()
             senha   = data.get('senha', '')
-            user_id = autenticar_usuario(usuario, senha)
-            if user_id:
-                token = criar_sessao(user_id, usuario)
-                self.send_json({'ok': True, 'token': token, 'usuario': usuario})
+            resultado = autenticar_usuario(usuario, senha)
+            if resultado:
+                user_id, usuario_original = resultado
+                token = criar_sessao(user_id, usuario_original)
+                self.send_json({'ok': True, 'token': token, 'usuario': usuario_original})
             else:
                 self.send_json({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
             return
