@@ -95,12 +95,13 @@ def _limpar_sessoes_expiradas():
         del _sessoes[t]
 
 
-def criar_sessao(user_id: str, usuario: str) -> str:
+def criar_sessao(user_id: str, usuario: str, is_admin: bool = False) -> str:
     _limpar_sessoes_expiradas()
     token = secrets.token_hex(32)
     _sessoes[token] = {
         'user_id':  user_id,
         'usuario':  usuario,
+        'is_admin': is_admin,
         'dados':    None,       # (rows, headers) — preenchido após /pipeline
         'criado_em': datetime.now(),
     }
@@ -354,6 +355,93 @@ def autenticar_usuario(username: str, senha: str) -> tuple[str, str] | None:
     return u["id"], chave
 
 
+def usuario_e_admin(username: str) -> bool:
+    """Verifica se o usuário tem a flag is_admin = true no usuarios.json."""
+    users = carregar_usuarios()
+    _, u = _buscar_usuario(users, username)
+    return bool(u and u.get("is_admin"))
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  PAINEL ADMIN — gestão de usuários (listar / criar / resetar senha / apagar)
+# ════════════════════════════════════════════════════════════════════════
+
+def admin_listar_usuarios() -> list:
+    """Retorna lista de usuários sem expor o hash da senha."""
+    users = carregar_usuarios()
+    out = []
+    for nome, dados in users.items():
+        out.append({
+            "usuario":  nome,
+            "email":    dados.get("email", ""),
+            "is_admin": bool(dados.get("is_admin", False)),
+        })
+    out.sort(key=lambda u: u["usuario"].lower())
+    return out
+
+
+def admin_criar_usuario(username: str, senha: str, email: str = "", is_admin: bool = False) -> tuple[bool, str]:
+    """Cria usuário diretamente (sem confirmação por email) — uso exclusivo do admin."""
+    username = (username or "").strip()
+    email    = (email or "").strip().lower()
+    if not username or len(username) < 3:
+        return False, "Usuário deve ter pelo menos 3 caracteres."
+    if not senha or len(senha) < 4:
+        return False, "Senha deve ter pelo menos 4 caracteres."
+    if email and not _email_valido(email):
+        return False, "Email inválido."
+
+    users = carregar_usuarios()
+    chave_existente, _ = _buscar_usuario(users, username)
+    if chave_existente is not None:
+        return False, "Usuário já existe."
+    if email and any(u.get('email', '').lower() == email for u in users.values()):
+        return False, "Este email já está cadastrado em outra conta."
+
+    novo = {
+        "id":   str(uuid.uuid4()),
+        "hash": _hash_senha(senha),
+    }
+    if email:
+        novo["email"] = email
+    if is_admin:
+        novo["is_admin"] = True
+
+    users[username] = novo
+    salvar_usuarios(users)
+    return True, "Usuário criado com sucesso."
+
+
+def admin_resetar_senha(username: str, nova_senha: str) -> tuple[bool, str]:
+    if not nova_senha or len(nova_senha) < 4:
+        return False, "A nova senha deve ter pelo menos 4 caracteres."
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    u["hash"] = _hash_senha(nova_senha)
+    salvar_usuarios(users)
+    return True, "Senha redefinida com sucesso."
+
+
+def admin_apagar_usuario(username: str, quem_pediu: str) -> tuple[bool, str]:
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    if chave.lower() == (quem_pediu or '').strip().lower():
+        return False, "Você não pode apagar sua própria conta de admin enquanto está logado nela."
+    del users[chave]
+    salvar_usuarios(users)
+    # invalida sessões ativas desse usuário, se houver
+    user_id = u.get("id")
+    if user_id:
+        tokens_para_remover = [t for t, s in _sessoes.items() if s.get('user_id') == user_id]
+        for t in tokens_para_remover:
+            del _sessoes[t]
+    return True, "Usuário apagado com sucesso."
+
+
 # ════════════════════════════════════════════════════════════════════════
 #  LÊ o rota_processada_final.xlsx e converte para JSON pro frontend
 # ════════════════════════════════════════════════════════════════════════
@@ -480,6 +568,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return None
         return sess
 
+    def _sessao_admin_ou_403(self) -> dict | None:
+        """Exige sessão válida E com is_admin = true. Senão, envia 401/403 e retorna None."""
+        sess = self._sessao_ou_401()
+        if sess is None:
+            return None
+        if not sess.get('is_admin'):
+            self.send_json({'ok': False, 'erro': 'Acesso restrito ao administrador.'}, 403)
+            return None
+        return sess
+
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
@@ -582,6 +680,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 self.send_json({'ok': False, 'erro': 'Rota não encontrada no histórico.'}, 404)
 
+        # /admin/usuarios — lista todos os usuários cadastrados (somente admin)
+        elif self.path == '/admin/usuarios':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            self.send_json({'ok': True, 'usuarios': admin_listar_usuarios()})
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -635,8 +740,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             resultado = autenticar_usuario(usuario, senha)
             if resultado:
                 user_id, usuario_original = resultado
-                token = criar_sessao(user_id, usuario_original)
-                self.send_json({'ok': True, 'token': token, 'usuario': usuario_original})
+                is_admin = usuario_e_admin(usuario_original)
+                token = criar_sessao(user_id, usuario_original, is_admin)
+                self.send_json({'ok': True, 'token': token, 'usuario': usuario_original, 'is_admin': is_admin})
             else:
                 self.send_json({'ok': False, 'erro': 'Usuário ou senha incorretos.'})
             return
@@ -647,6 +753,41 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if token:
                 destruir_sessao(token)
             self.send_json({'ok': True})
+            return
+
+        # /admin/usuarios/criar — cria usuário direto, sem confirmação por email (só admin)
+        if self.path == '/admin/usuarios/criar':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_criar_usuario(
+                data.get('usuario', ''),
+                data.get('senha', ''),
+                data.get('email', ''),
+                bool(data.get('is_admin', False)),
+            )
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /admin/usuarios/resetar-senha — redefine a senha de um usuário (só admin)
+        if self.path == '/admin/usuarios/resetar-senha':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_resetar_senha(data.get('usuario', ''), data.get('nova_senha', ''))
+            self.send_json({'ok': ok, 'msg': msg})
             return
 
         # demais rotas exigem token de sessão válido
@@ -761,6 +902,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         from urllib.parse import urlparse, parse_qs
+
+        if self.path.startswith('/admin/usuarios'):
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            qs   = parse_qs(urlparse(self.path).query)
+            nome = qs.get('usuario', [''])[0]
+            ok, msg = admin_apagar_usuario(nome, sess['usuario'])
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
         if self.path.startswith('/historico/apagar'):
             sess = self._sessao_ou_401()
             if sess is None:
@@ -778,6 +930,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  BOOTSTRAP DO ADMIN
+#  Garante que sempre exista um usuário com is_admin=true.
+#  Senha definida por ADMIN_PASS (variável de ambiente). Se ADMIN_PASS não
+#  for definida na primeira execução, usa "admin123" — TROQUE depois pelo
+#  próprio painel admin (resetar senha).
+# ════════════════════════════════════════════════════════════════════════
+
+def _bootstrap_admin():
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, 'admin')
+
+    if u is None:
+        senha_inicial = os.environ.get('ADMIN_PASS', 'admin123')
+        users['admin'] = {
+            "id":       str(uuid.uuid4()),
+            "hash":     _hash_senha(senha_inicial),
+            "is_admin": True,
+        }
+        salvar_usuarios(users)
+        print(f"  [ADMIN] Usuário 'admin' criado. Senha inicial: {senha_inicial!r} (troque pelo painel admin).")
+    elif not u.get('is_admin'):
+        u['is_admin'] = True
+        salvar_usuarios(users)
+        print("  [ADMIN] Usuário 'admin' existente recebeu a flag is_admin.")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -801,6 +980,8 @@ def main():
         print("⚠️  openpyxl não encontrado. Instalando...")
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'openpyxl'])
         print("✅ openpyxl instalado.")
+
+    _bootstrap_admin()
 
     srv = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     try:

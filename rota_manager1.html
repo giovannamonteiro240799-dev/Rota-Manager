@@ -130,6 +130,83 @@ header .badge b { color: var(--accent2); }
   .hist-del:hover { opacity: 1; color: var(--danger); }
   #hist-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
 
+  /* ── Painel Admin (mesmo padrão visual do histórico) ── */
+  #admin-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #admin-overlay.show { display: flex; }
+  #admin-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 380px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+    animation: slideIn .18s ease;
+  }
+  #admin-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #admin-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+
+  #admin-novo { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+  .admin-novo-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent2);
+    padding: 6px 2px;
+  }
+  #admin-novo-form { padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .admin-input { width: 100%; box-sizing: border-box; }
+  .admin-checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+
+  .admin-msg {
+    font-size: 12px; padding: 0 14px; min-height: 0;
+  }
+  .admin-msg.show { padding: 8px 14px; }
+  .admin-msg.ok    { color: #4ade80; }
+  .admin-msg.erro  { color: var(--danger); }
+
+  #admin-list { flex: 1; overflow-y: auto; padding: 10px; }
+  .admin-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+  .admin-item-nome { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; display: flex; align-items: center; gap: 6px; }
+  .admin-tag-admin {
+    font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 1px 7px;
+  }
+  .admin-item-email { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .admin-item-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .admin-item-actions button {
+    flex: 1; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
+    transition: border-color .15s;
+  }
+  .admin-item-actions button:hover { border-color: var(--accent2); color: var(--accent2); }
+  .admin-item-actions button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  #admin-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 640px) {
+    #admin-panel { width: 100vw; }
+  }
+
   /* botão histórico no header */
   .btn-hist {
     background: var(--surface2);
@@ -975,12 +1052,46 @@ transition: .15s;
   </div>
 </div>
 
+<!-- ══ PAINEL ADMIN ══ -->
+<div id="admin-overlay" onclick="fecharAdmin(event)">
+  <div id="admin-panel">
+    <div id="admin-header">
+      <span>🛠</span>
+      <span class="title">Administração de Usuários</span>
+      <button class="close-btn" onclick="fecharAdmin()">✕</button>
+    </div>
+
+    <div id="admin-novo">
+      <div class="admin-novo-toggle" id="admin-novo-toggle" onclick="toggleNovoUsuario()">
+        <span>➕ Novo usuário</span><span id="admin-novo-seta">▾</span>
+      </div>
+      <div id="admin-novo-form" style="display:none">
+        <input class="login-input admin-input" id="adm-novo-user" type="text" placeholder="Usuário" autocomplete="off">
+        <input class="login-input admin-input" id="adm-novo-email" type="email" placeholder="Email (opcional)" autocomplete="off">
+        <input class="login-input admin-input" id="adm-novo-pass" type="text" placeholder="Senha" autocomplete="off">
+        <label class="admin-checkbox"><input type="checkbox" id="adm-novo-isadmin"> Tornar administrador</label>
+        <button class="btn btn-primary" id="btn-adm-criar" onclick="adminCriarUsuario()" style="width:100%;margin-top:6px">Criar usuário</button>
+      </div>
+    </div>
+
+    <div id="admin-msg" class="admin-msg"></div>
+
+    <div id="admin-list">
+      <div id="admin-empty">Carregando usuários...</div>
+    </div>
+  </div>
+</div>
+
+
 <header>
 <div class="logo">🗺 ROTA<span>MANAGER</span></div>
 <div class="spacer"></div>
 <div class="badge" id="file-badge"></div>
   <button class="btn-hist" id="btn-hist" onclick="abrirHistorico()" style="display:none">
     🗂 <span class="label">Histórico</span>
+  </button>
+  <button class="btn-hist" id="btn-admin" onclick="abrirAdmin()" style="display:none">
+    🛠 <span class="label">Admin</span>
   </button>
 <div class="header-user" id="header-user" style="display:none">
 <span>👤</span><span class="user-name" id="header-username"></span>
@@ -2718,15 +2829,152 @@ btn.disabled = false;
 
 <!-- ══ SISTEMA DE LOGIN ══ -->
 <script>
+// ══════════════════════════════════════════════════════════
+//  PAINEL ADMIN — gestão de usuários
+// ══════════════════════════════════════════════════════════
+
+function abrirAdmin() {
+  carregarListaAdmin();
+  document.getElementById('admin-overlay').classList.add('show');
+}
+
+function fecharAdmin(e) {
+  if (e && e.target !== document.getElementById('admin-overlay')) return;
+  document.getElementById('admin-overlay').classList.remove('show');
+}
+
+function toggleNovoUsuario() {
+  const form = document.getElementById('admin-novo-form');
+  const seta = document.getElementById('admin-novo-seta');
+  const abrindo = form.style.display === 'none';
+  form.style.display = abrindo ? 'flex' : 'none';
+  seta.textContent = abrindo ? '▴' : '▾';
+}
+
+function adminMsg(msg, tipo) {
+  const el = document.getElementById('admin-msg');
+  el.textContent = msg;
+  el.className = 'admin-msg show ' + (tipo === 'erro' ? 'erro' : 'ok');
+  setTimeout(() => { el.className = 'admin-msg'; }, 3500);
+}
+
+async function carregarListaAdmin() {
+  document.getElementById('admin-list').innerHTML = '<div id="admin-empty">Carregando usuários...</div>';
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios', { headers: authHeaders() });
+    const d = await r.json();
+    if (!d.ok) {
+      document.getElementById('admin-list').innerHTML =
+        `<div id="admin-empty">${escHtml(d.erro || 'Não foi possível carregar.')}</div>`;
+      return;
+    }
+    renderListaAdmin(d.usuarios || []);
+  } catch (e) {
+    document.getElementById('admin-list').innerHTML =
+      '<div id="admin-empty">Não foi possível conectar ao servidor.</div>';
+  }
+}
+
+function renderListaAdmin(lista) {
+  const el = document.getElementById('admin-list');
+  if (!lista.length) {
+    el.innerHTML = '<div id="admin-empty">Nenhum usuário cadastrado.</div>';
+    return;
+  }
+  el.innerHTML = lista.map(u => `
+    <div class="admin-item">
+      <div class="admin-item-nome">
+        👤 ${escHtml(u.usuario)}
+        ${u.is_admin ? '<span class="admin-tag-admin">ADMIN</span>' : ''}
+      </div>
+      ${u.email ? `<div class="admin-item-email">${escHtml(u.email)}</div>` : ''}
+      <div class="admin-item-actions">
+        <button onclick="adminResetarSenha('${escHtml(u.usuario)}')">🔑 Resetar senha</button>
+        <button class="danger" onclick="adminApagarUsuario('${escHtml(u.usuario)}')">🗑 Apagar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function adminCriarUsuario() {
+  const usuario  = document.getElementById('adm-novo-user').value.trim();
+  const email    = document.getElementById('adm-novo-email').value.trim();
+  const senha    = document.getElementById('adm-novo-pass').value;
+  const is_admin = document.getElementById('adm-novo-isadmin').checked;
+
+  if (!usuario || usuario.length < 3) { adminMsg('Usuário deve ter pelo menos 3 caracteres.', 'erro'); return; }
+  if (!senha || senha.length < 4)     { adminMsg('Senha deve ter pelo menos 4 caracteres.', 'erro'); return; }
+
+  const btn = document.getElementById('btn-adm-criar');
+  btn.disabled = true; btn.textContent = '⏳ Criando...';
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/criar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario, email, senha, is_admin })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) {
+      document.getElementById('adm-novo-user').value = '';
+      document.getElementById('adm-novo-email').value = '';
+      document.getElementById('adm-novo-pass').value = '';
+      document.getElementById('adm-novo-isadmin').checked = false;
+      toggleNovoUsuario();
+      carregarListaAdmin();
+    }
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Criar usuário';
+  }
+}
+
+async function adminResetarSenha(usuario) {
+  const nova = prompt(`Nova senha para "${usuario}" (mínimo 4 caracteres):`);
+  if (nova === null) return;
+  if (!nova || nova.length < 4) { adminMsg('Senha deve ter pelo menos 4 caracteres.', 'erro'); return; }
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/resetar-senha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario, nova_senha: nova })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+
+async function adminApagarUsuario(usuario) {
+  if (!confirm(`Apagar o usuário "${usuario}"? Essa ação não pode ser desfeita.`)) return;
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios?usuario=' + encodeURIComponent(usuario), {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) carregarListaAdmin();
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+</script>
+
+<!-- ══ SISTEMA DE LOGIN ══ -->
+<script>
 // ── Chave de sessão (sessionStorage — por aba) ───────────────────────
 const SESSION_KEY = 'rm_session_v1';
 
 function getSession() {
 try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
 }
-function saveSession(user, token) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user, token })); }
+function saveSession(user, token, isAdmin) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user, token, isAdmin: !!isAdmin })); }
 function clearSession()    { sessionStorage.removeItem(SESSION_KEY); }
 function getToken()        { const s = getSession(); return s && s.token ? s.token : null; }
+function isAdminUser()     { const s = getSession(); return !!(s && s.isAdmin); }
 function authHeaders()     { const t = getToken(); return t ? { 'Authorization': 'Bearer ' + t } : {}; }
 
 // ── UI helpers ────────────────────────────────────────────────────────
@@ -2790,7 +3038,7 @@ body: JSON.stringify({ usuario, senha })
 });
 const d = await r.json();
 if (d.ok) {
-saveSession(d.usuario, d.token);
+saveSession(d.usuario, d.token, d.is_admin);
 entrarNoApp(d.usuario);
 } else {
 showError(d.erro || 'Usuário ou senha incorretos.');
@@ -2899,6 +3147,7 @@ function entrarNoApp(user) {
 document.getElementById('login-screen').classList.add('hidden');
 document.getElementById('header-user').style.display = 'flex';
 document.getElementById('header-username').textContent = user;
+document.getElementById('btn-admin').style.display = isAdminUser() ? '' : 'none';
 }
 
 // ── Sair ──────────────────────────────────────────────────────────────
@@ -2908,6 +3157,8 @@ if (token) fetch(SERVER + '/auth/logout', { method: 'POST', headers: { 'Authoriz
 clearSession();
 document.getElementById('login-screen').classList.remove('hidden');
 document.getElementById('header-user').style.display = 'none';
+document.getElementById('btn-admin').style.display = 'none';
+fecharAdmin();
 clearMsgs();
 switchTab('entrar');
 document.getElementById('in-user').value = '';
