@@ -75,6 +75,7 @@ PLANOS = {
         "beneficio": "Use 1 importação avulsa",
         "badge":     None,
         "pagamento_automatico": True,
+        "importacoes_por_dia": None,   # avulso: controlado por crédito, não por dia
     },
     "essencial": {
         "nome":      "Plano Essencial",
@@ -84,6 +85,7 @@ PLANOS = {
         "beneficio": "1 importação por dia",
         "badge":     None,
         "pagamento_automatico": True,
+        "importacoes_por_dia": 1,
     },
     "profissional": {
         "nome":      "Plano Profissional",
@@ -93,6 +95,7 @@ PLANOS = {
         "beneficio": "2 importações por dia",
         "badge":     "MAIS POPULAR",
         "pagamento_automatico": True,
+        "importacoes_por_dia": 2,
     },
 }
 
@@ -634,6 +637,7 @@ def admin_liberar_acesso(username: str, dias: int) -> tuple[bool, str]:
 
     expira_em = datetime.now() + timedelta(days=dias)
     u["acesso_expira_em"] = expira_em.isoformat()
+    u.pop("plano_ativo", None)   # liberação manual não tem limite diário de plano
     salvar_usuarios(users)
     return True, f"Acesso liberado até {expira_em.strftime('%d/%m/%Y %H:%M')}."
 
@@ -644,6 +648,7 @@ def admin_revogar_acesso(username: str) -> tuple[bool, str]:
     if u is None:
         return False, "Usuário não encontrado."
     u.pop("acesso_expira_em", None)
+    u.pop("plano_ativo", None)   # limpa o plano mensal ativo ao revogar
     salvar_usuarios(users)
     return True, "Acesso revogado."
 
@@ -663,6 +668,70 @@ def usuario_tem_acesso_ativo(username: str) -> bool:
         except ValueError:
             pass
     return int(u.get("avulsa_creditos", 0) or 0) > 0
+
+
+# ── Limite diário de importações (planos mensais) ────────────────────────
+# Cada plano mensal tem um teto de importações por dia (PLANOS[...]["impor
+# tacoes_por_dia"]); o crédito avulso e a liberação manual não têm esse
+# teto, só o binário "tem acesso ou não". Por isso guardamos qual plano
+# mensal está ativo (u["plano_ativo"]) sempre que _creditar_plano credita
+# um plano do tipo "mensal" — é esse campo que diz se o limite diário se
+# aplica e qual é o limite.
+
+def _contagem_hoje(u: dict) -> int:
+    """Quantas importações o usuário já fez hoje (data local do servidor)."""
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    c = u.get("importacoes_hoje", {})
+    if not isinstance(c, dict) or c.get("data") != hoje:
+        return 0
+    return int(c.get("count", 0) or 0)
+
+
+def usuario_pode_importar_hoje(username: str) -> tuple[bool, str]:
+    """Verifica se o usuário ainda tem cota de importações hoje. Devolve
+    (True, '') se pode importar, ou (False, motivo) se a cota diária do
+    plano mensal já foi atingida. Usuários sem plano_ativo (liberação
+    manual ou crédito avulso) sempre passam aqui — o controle deles é só
+    o acesso binário / crédito, já checado em usuario_tem_acesso_ativo."""
+    users = carregar_usuarios()
+    _, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    plano_ativo = u.get("plano_ativo")
+    if not plano_ativo:
+        return True, ""   # sem plano mensal rastreado: sem limite diário
+    limite = PLANOS.get(plano_ativo, {}).get("importacoes_por_dia")
+    if limite is None:
+        return True, ""
+    usadas = _contagem_hoje(u)
+    if usadas >= limite:
+        sufixo = "ão" if limite == 1 else "ões"
+        return False, (
+            f"Limite diário do seu plano atingido "
+            f"({usadas}/{limite} importaç{sufixo} hoje). Volte amanhã."
+        )
+    return True, ""
+
+
+def registrar_importacao_hoje(username: str):
+    """Incrementa o contador de importações do dia. Só tem efeito se o
+    usuário tiver plano_ativo (plano mensal com limite diário) — avulso e
+    liberação manual não usam esse contador."""
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return
+    if not u.get("plano_ativo"):
+        return
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    c = u.get("importacoes_hoje", {})
+    if not isinstance(c, dict) or c.get("data") != hoje:
+        c = {"data": hoje, "count": 0}
+    c["count"] = int(c.get("count", 0) or 0) + 1
+    u["importacoes_hoje"] = c
+    salvar_usuarios(users)
+    limite = PLANOS.get(u["plano_ativo"], {}).get("importacoes_por_dia")
+    print(f"  [LIMITE] {chave}: {c['count']} importação(ões) hoje (limite: {limite}).")
 
 
 # ── Planos de assinatura: solicitar (usuário) / confirmar ou rejeitar (admin) ──
@@ -695,9 +764,11 @@ def _creditar_plano(u: dict, plano_id: str) -> str:
     plano = PLANOS[plano_id]
     if plano["tipo"] == "avulso":
         u["avulsa_creditos"] = int(u.get("avulsa_creditos", 0) or 0) + 1
+        u.pop("plano_ativo", None)   # avulso não usa plano_ativo / limite diário
         return "1 crédito de importação avulsa liberado."
     expira_em = datetime.now() + timedelta(days=plano["dias"])
     u["acesso_expira_em"] = expira_em.isoformat()
+    u["plano_ativo"] = plano_id   # grava qual plano mensal está ativo (p/ limite diário)
     return f"{plano['nome']} liberado até {expira_em.strftime('%d/%m/%Y %H:%M')}."
 
 
@@ -1033,7 +1104,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return sess
 
     def _sessao_com_acesso_ou_403(self) -> dict | None:
-        """Exige sessão válida E com acesso à importação de rotas ainda ativo.
+        """Exige sessão válida E com acesso à importação de rotas ainda ativo
+        E, se o plano mensal tiver limite diário, cota do dia ainda disponível.
         Admins sempre têm acesso, independente da liberação. Senão, envia 401/403."""
         sess = self._sessao_ou_401()
         if sess is None:
@@ -1044,6 +1116,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': False,
                              'erro': 'Seu acesso à importação de rotas expirou ou não foi liberado. '
                                      'Fale com o administrador.'}, 403)
+            return None
+        pode, motivo = usuario_pode_importar_hoje(sess['usuario'])
+        if not pode:
+            self.send_json({'ok': False, 'erro': motivo}, 403)
             return None
         return sess
 
@@ -1167,6 +1243,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'plano_solicitado':    plano_solicitado,
                 'plano_solicitado_em': u.get('plano_solicitado_em'),
                 'plano_solicitado_nome': PLANOS.get(plano_solicitado, {}).get('nome'),
+                'plano_ativo':  u.get('plano_ativo'),
+                'usadas_hoje':  _contagem_hoje(u),
+                'limite_hoje':  PLANOS.get(u.get('plano_ativo', ''), {}).get('importacoes_por_dia'),
                 'pagamento_pendente': {
                     'plano_id':  pendente.get('plano_id'),
                     'url':       pendente.get('url'),
@@ -1627,6 +1706,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 adicionar_ao_historico(nome_arq, rows, headers, sess['user_id'])
                 if not sess.get('is_admin'):
                     usuario_consumir_credito_avulso_se_necessario(sess['usuario'])
+                    registrar_importacao_hoje(sess['usuario'])
                 print(f"  [PIPELINE] ✅ {len(rows)} endereços carregados")
                 self.send_json({'ok': True, 'total': len(rows)})
 

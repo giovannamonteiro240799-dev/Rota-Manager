@@ -278,6 +278,15 @@ header .badge b { color: var(--accent2); }
     line-height: 1.5;
   }
   .assinatura-ativa b { color: #4ade80; }
+  .assinatura-limite-ok,
+  .assinatura-limite-atingido {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,.08);
+    font-size: 11.5px;
+  }
+  .assinatura-limite-ok { color: var(--muted); }
+  .assinatura-limite-atingido { color: var(--danger); font-weight: 600; }
 
   .plano-card {
     background: var(--surface2);
@@ -1303,12 +1312,12 @@ Escolher arquivo .xlsx
 </button>
 </div>
 
-<!-- Drop zone alternativa: acesso/assinatura vencida (sem clique, sem botão de upload) -->
+<!-- Drop zone alternativa: acesso/assinatura vencida OU limite diário atingido (sem clique, sem botão de upload) -->
 <div id="drop-zone-sem-acesso" style="display:none">
-<div class="drop-icon">🔒</div>
-<div class="drop-title" style="color:var(--danger)">Assinatura vencida</div>
-<div class="drop-sub">Nenhuma rota ativa</div>
-<button class="drop-btn" onclick="abrirAssinatura()">🔓 Realizar nova assinatura</button>
+<div class="drop-icon" id="drop-icon-sem-acesso">🔒</div>
+<div class="drop-title" id="drop-titulo-sem-acesso" style="color:var(--danger)">Assinatura vencida</div>
+<div class="drop-sub" id="drop-sub-sem-acesso">Nenhuma rota ativa</div>
+<button class="drop-btn" id="drop-btn-sem-acesso" onclick="abrirAssinatura()">🔓 Realizar nova assinatura</button>
 </div>
 
 <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
@@ -2717,6 +2726,25 @@ function aplicarVisibilidadeDropZone() {
   document.getElementById('drop-zone-sem-acesso').style.display = semAcesso ? 'flex' : 'none';
 }
 
+// Ajusta o texto/botão da tela "sem acesso" pro motivo real: assinatura
+// vencida/não liberada (pode resolver pagando) vs. limite diário do plano
+// já atingido (já é assinante, só precisa esperar até amanhã — pagar de
+// novo não ajudaria e só confundiria o cliente).
+function mostrarSemAcesso(motivo) {
+  const ehLimiteDiario = /limite diário/i.test(motivo || '');
+  document.getElementById('drop-icon-sem-acesso').textContent   = ehLimiteDiario ? '⏳' : '🔒';
+  document.getElementById('drop-titulo-sem-acesso').textContent = ehLimiteDiario ? 'Limite diário atingido' : 'Assinatura vencida';
+  document.getElementById('drop-sub-sem-acesso').textContent    = motivo || 'Nenhuma rota ativa';
+  const btn = document.getElementById('drop-btn-sem-acesso');
+  if (ehLimiteDiario) {
+    btn.textContent = '📋 Ver minha assinatura';
+  } else {
+    btn.textContent = '🔓 Realizar nova assinatura';
+  }
+  _temAcesso = false;
+  aplicarVisibilidadeDropZone();
+}
+
 async function checarAcesso() {
   const token = getToken();
   if (!token) { _temAcesso = true; return; }   // sem sessão ainda — nada a checar
@@ -2796,9 +2824,10 @@ const fd = new FormData();
 fd.append('arquivo', file, 'rota.xlsx');
 const up = await fetch(SERVER + '/upload', { method: 'POST', body: fd, headers: authHeaders() });
 if (up.status === 403) {
-  _temAcesso = false;
+  let motivo = '';
+  try { motivo = (await up.json()).erro || ''; } catch (e) {}
   hideLoading();
-  aplicarVisibilidadeDropZone();
+  mostrarSemAcesso(motivo);
   return;
 }
 if (!up.ok) throw new Error('Falha no upload');
@@ -2807,9 +2836,10 @@ if (!up.ok) throw new Error('Falha no upload');
 document.getElementById('loading-msg').textContent = 'Rodando tratamento_dados.py...';
 const pipe = await fetch(SERVER + '/pipeline', { method: 'POST', headers: authHeaders() });
 if (pipe.status === 403) {
-  _temAcesso = false;
+  let motivo = '';
+  try { motivo = (await pipe.json()).erro || ''; } catch (e) {}
   hideLoading();
-  aplicarVisibilidadeDropZone();
+  mostrarSemAcesso(motivo);
   return;
 }
 const pd   = await pipe.json();
@@ -3366,7 +3396,18 @@ function renderAssinatura(planos, status) {
     const expiraEm = status.acesso_expira_em ? new Date(status.acesso_expira_em) : null;
     const temMensal = expiraEm && expiraEm.getTime() > agora;
     if (temMensal) {
-      html += `<div class="assinatura-ativa">✓ Você já tem <b>acesso ativo</b> até ${expiraEm.toLocaleDateString('pt-BR')}.</div>`;
+      let limiteHtml = '';
+      if (status.limite_hoje != null) {
+        const usadas = status.usadas_hoje || 0;
+        const limite = status.limite_hoje;
+        const atingido = usadas >= limite;
+        const cls = atingido ? 'assinatura-limite-atingido' : 'assinatura-limite-ok';
+        const msg = atingido
+          ? `⛔ Limite diário atingido (${usadas}/${limite} importações hoje). Volte amanhã.`
+          : `Importações hoje: ${usadas}/${limite}`;
+        limiteHtml = `<div class="${cls}">${msg}</div>`;
+      }
+      html += `<div class="assinatura-ativa">✓ Você já tem <b>acesso ativo</b> até ${expiraEm.toLocaleDateString('pt-BR')}.${limiteHtml}</div>`;
     } else if (status.avulsa_creditos > 0) {
       html += `<div class="assinatura-ativa">✓ Você tem <b>${status.avulsa_creditos}</b> importação(ões) avulsa(s) disponível(eis).</div>`;
     }
