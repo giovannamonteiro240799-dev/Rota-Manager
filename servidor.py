@@ -483,16 +483,18 @@ def admin_listar_usuarios() -> list:
     out = []
     for nome, dados in users.items():
         out.append({
-            "usuario":  nome,
-            "email":    dados.get("email", ""),
-            "is_admin": bool(dados.get("is_admin", False)),
+            "usuario":          nome,
+            "email":            dados.get("email", ""),
+            "is_admin":         bool(dados.get("is_admin", False)),
+            "acesso_expira_em": dados.get("acesso_expira_em"),   # ISO string ou None
         })
     out.sort(key=lambda u: u["usuario"].lower())
     return out
 
 
 def admin_criar_usuario(username: str, senha: str, email: str = "", is_admin: bool = False) -> tuple[bool, str]:
-    """Cria usuário diretamente (sem confirmação por email) — uso exclusivo do admin."""
+    """Cria usuário diretamente (sem confirmação por email) — uso exclusivo do admin.
+    Por padrão nasce SEM acesso à importação de rotas (admin libera manualmente)."""
     username = (username or "").strip()
     email    = (email or "").strip().lower()
     if not username or len(username) < 3:
@@ -517,6 +519,7 @@ def admin_criar_usuario(username: str, senha: str, email: str = "", is_admin: bo
         novo["email"] = email
     if is_admin:
         novo["is_admin"] = True
+    # acesso_expira_em fica ausente (None) — sem acesso até o admin liberar
 
     users[username] = novo
     salvar_usuarios(users)
@@ -551,6 +554,54 @@ def admin_apagar_usuario(username: str, quem_pediu: str) -> tuple[bool, str]:
         for t in tokens_para_remover:
             del _sessoes[t]
     return True, "Usuário apagado com sucesso."
+
+
+# ── Controle de acesso à importação de rotas (liberar por X dias / revogar) ──
+
+def admin_liberar_acesso(username: str, dias: int) -> tuple[bool, str]:
+    """Define acesso_expira_em = agora + dias. dias deve ser >= 1."""
+    try:
+        dias = int(dias)
+    except (TypeError, ValueError):
+        return False, "Número de dias inválido."
+    if dias < 1:
+        return False, "Informe pelo menos 1 dia de acesso."
+
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+
+    expira_em = datetime.now() + timedelta(days=dias)
+    u["acesso_expira_em"] = expira_em.isoformat()
+    salvar_usuarios(users)
+    return True, f"Acesso liberado até {expira_em.strftime('%d/%m/%Y %H:%M')}."
+
+
+def admin_revogar_acesso(username: str) -> tuple[bool, str]:
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    u.pop("acesso_expira_em", None)
+    salvar_usuarios(users)
+    return True, "Acesso revogado."
+
+
+def usuario_tem_acesso_ativo(username: str) -> bool:
+    """True se acesso_expira_em existir e ainda não tiver passado."""
+    users = carregar_usuarios()
+    _, u = _buscar_usuario(users, username)
+    if u is None:
+        return False
+    expira_raw = u.get("acesso_expira_em")
+    if not expira_raw:
+        return False
+    try:
+        expira_em = datetime.fromisoformat(expira_raw)
+    except ValueError:
+        return False
+    return datetime.now() < expira_em
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -686,6 +737,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return None
         if not sess.get('is_admin'):
             self.send_json({'ok': False, 'erro': 'Acesso restrito ao administrador.'}, 403)
+            return None
+        return sess
+
+    def _sessao_com_acesso_ou_403(self) -> dict | None:
+        """Exige sessão válida E com acesso à importação de rotas ainda ativo.
+        Admins sempre têm acesso, independente da liberação. Senão, envia 401/403."""
+        sess = self._sessao_ou_401()
+        if sess is None:
+            return None
+        if sess.get('is_admin'):
+            return sess
+        if not usuario_tem_acesso_ativo(sess['usuario']):
+            self.send_json({'ok': False,
+                             'erro': 'Seu acesso à importação de rotas expirou ou não foi liberado. '
+                                     'Fale com o administrador.'}, 403)
             return None
         return sess
 
@@ -947,8 +1013,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # demais rotas exigem token de sessão válido
-        sess = self._sessao_ou_401()
+        # /admin/usuarios/liberar-acesso — libera acesso à importação por N dias (só admin)
+        if self.path == '/admin/usuarios/liberar-acesso':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_liberar_acesso(data.get('usuario', ''), data.get('dias', 0))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /admin/usuarios/revogar-acesso — remove o acesso à importação (só admin)
+        if self.path == '/admin/usuarios/revogar-acesso':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_revogar_acesso(data.get('usuario', ''))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # demais rotas (/upload, /pipeline) exigem token de sessão válido
+        # E acesso à importação de rotas ainda ativo (liberado pelo admin)
+        sess = self._sessao_com_acesso_ou_403()
         if sess is None:
             return
 

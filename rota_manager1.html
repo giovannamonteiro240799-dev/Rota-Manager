@@ -193,6 +193,13 @@ header .badge b { color: var(--accent2); }
     border-radius: 999px; padding: 1px 7px;
   }
   .admin-item-email { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .admin-acesso-badge {
+    display: inline-block; font-size: 10px; font-weight: 700; border-radius: 999px;
+    padding: 2px 9px; letter-spacing: .02em;
+  }
+  .admin-acesso-ok       { color: #4ade80; border: 1px solid #4ade80; background: rgba(74,222,128,.08); }
+  .admin-acesso-expirado { color: var(--accent);  border: 1px solid var(--accent);  background: rgba(245,158,11,.08); }
+  .admin-acesso-sem      { color: var(--muted); border: 1px solid var(--border); }
   .admin-item-actions { display: flex; gap: 8px; margin-top: 10px; }
   .admin-item-actions button {
     flex: 1; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;
@@ -2933,19 +2940,42 @@ function renderListaAdmin(lista) {
     el.innerHTML = '<div id="admin-empty">Nenhum usuário cadastrado.</div>';
     return;
   }
-  el.innerHTML = lista.map(u => `
+  const agora = Date.now();
+  el.innerHTML = lista.map(u => {
+    const expiraEm = u.acesso_expira_em ? new Date(u.acesso_expira_em) : null;
+    const temAcesso = expiraEm && expiraEm.getTime() > agora;
+    let statusHtml;
+    if (u.is_admin) {
+      statusHtml = `<span class="admin-acesso-badge admin-acesso-ok">✓ Acesso total (admin)</span>`;
+    } else if (temAcesso) {
+      const dataFmt = expiraEm.toLocaleDateString('pt-BR') + ' ' + expiraEm.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      statusHtml = `<span class="admin-acesso-badge admin-acesso-ok">✓ Acesso até ${dataFmt}</span>`;
+    } else if (expiraEm) {
+      statusHtml = `<span class="admin-acesso-badge admin-acesso-expirado">⏱ Acesso expirado</span>`;
+    } else {
+      statusHtml = `<span class="admin-acesso-badge admin-acesso-sem">✕ Sem acesso</span>`;
+    }
+
+    return `
     <div class="admin-item">
       <div class="admin-item-nome">
         👤 ${escHtml(u.usuario)}
         ${u.is_admin ? '<span class="admin-tag-admin">ADMIN</span>' : ''}
       </div>
       ${u.email ? `<div class="admin-item-email">${escHtml(u.email)}</div>` : ''}
+      <div style="margin-top:6px">${statusHtml}</div>
       <div class="admin-item-actions">
         <button onclick="adminResetarSenha('${escHtml(u.usuario)}')">🔑 Resetar senha</button>
         <button class="danger" onclick="adminApagarUsuario('${escHtml(u.usuario)}')">🗑 Apagar</button>
       </div>
+      ${!u.is_admin ? `
+      <div class="admin-item-actions">
+        <button onclick="adminLiberarAcesso('${escHtml(u.usuario)}')">📂 Liberar acesso</button>
+        ${(temAcesso || expiraEm) ? `<button class="danger" onclick="adminRevogarAcesso('${escHtml(u.usuario)}')">🚫 Revogar acesso</button>` : ''}
+      </div>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function adminCriarUsuario() {
@@ -3005,6 +3035,41 @@ async function adminApagarUsuario(usuario) {
     const r = await fetch(SERVER + '/admin/usuarios?usuario=' + encodeURIComponent(usuario), {
       method: 'DELETE',
       headers: authHeaders()
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) carregarListaAdmin();
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+
+async function adminLiberarAcesso(usuario) {
+  const dias = prompt(`Liberar acesso à importação de rotas para "${usuario}" por quantos dias?`, '30');
+  if (dias === null) return;
+  const n = parseInt(dias, 10);
+  if (!n || n < 1) { adminMsg('Informe um número de dias válido (mínimo 1).', 'erro'); return; }
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/liberar-acesso', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario, dias: n })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) carregarListaAdmin();
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+
+async function adminRevogarAcesso(usuario) {
+  if (!confirm(`Revogar o acesso de "${usuario}" à importação de rotas?`)) return;
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/revogar-acesso', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario })
     });
     const d = await r.json();
     adminMsg(d.msg, d.ok ? 'ok' : 'erro');
