@@ -3045,24 +3045,48 @@ btn.textContent = "⏳ Exportando...";
 
 try {
 // Exporta só 3 colunas — formato pensado pra importar direto no Circuit:
-// LATITUDE | LONGITUDE | SEQUENCE + ENDERECO_ORIGINAL (sequência(s) + endereço(s)
-// originais juntos numa só coluna; quando a parada foi agrupada manualmente,
-// junta todos os endereços do grupo separados por " | ").
+// LATITUDE | LONGITUDE | SEQUENCE + ENDERECO_ORIGINAL
+//
+// Importante: só junta sequências (SEQ) numa mesma célula quando elas têm
+// o MESMO endereço original (mesma rua, Qd, lote, casa etc — texto idêntico).
+// Se a linha foi agrupada (group_size > 1) mas os membros têm endereços
+// originais diferentes (ex: Qd/lote/casa diferentes), cada endereço
+// distinto vira uma LINHA separada na planilha exportada, mesmo que
+// reaproveite a mesma lat/lon da linha (não há coordenada própria por
+// endereço quando o agrupamento foi feito pela mesma rua/prédio).
 const dataOut = [["LATITUDE", "LONGITUDE", "SEQUENCE + ENDERECO_ORIGINAL"]];
 for (const row of _allRows) {
 const membros = Array.isArray(row.membros) && row.membros.length
 ? row.membros
 : [{ stop: row.stop, original: row.endereco_original || row.address }];
 
-const seqEndereco = membros
-.map(m => {
-const orig = m.original || '';
-return m.stop ? `${m.stop} - ${orig}` : orig;
-})
-.filter(Boolean)
-.join(' | ');
+// Agrupa os membros desta linha por endereço original idêntico
+const porEndereco = new Map();   // endereco original (trim) -> [stops]
+for (const m of membros) {
+const orig = String(m.original || '').trim();
+if (!orig) continue;
+if (!porEndereco.has(orig)) porEndereco.set(orig, []);
+porEndereco.get(orig).push(m.stop);
+}
 
-dataOut.push([row.lat || '', row.lon || '', seqEndereco]);
+for (const [orig, stops] of porEndereco) {
+porEndereco.set(orig, stops.slice().sort((a, b) => {
+const na = parseInt(a, 10), nb = parseInt(b, 10);
+if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+return String(a).localeCompare(String(b), undefined, { numeric: true });
+}));
+}
+const gruposOrdenados = Array.from(porEndereco.entries()).sort((g1, g2) => {
+const minA = parseInt(g1[1][0], 10), minB = parseInt(g2[1][0], 10);
+if (Number.isFinite(minA) && Number.isFinite(minB) && minA !== minB) return minA - minB;
+return String(g1[1][0]).localeCompare(String(g2[1][0]), undefined, { numeric: true });
+});
+
+for (const [orig, stopsOrdenados] of gruposOrdenados) {
+const seqStr = stopsOrdenados.filter(s => s !== '' && s != null).join(', ');
+const celula = seqStr ? `${seqStr} - ${orig}` : orig;
+dataOut.push([row.lat || '', row.lon || '', celula]);
+}
 }
 
 const ws = XLSX.utils.aoa_to_sheet(dataOut);
