@@ -2139,6 +2139,8 @@ function initArcgisMap() {
 
  arcgisMap.on('load', () => {
    arcgisMap.addSource('pmg-lotes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+   arcgisMap.addSource('pmg-quadras', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
    arcgisMap.addLayer({
      id: 'pmg-lotes-fill',
      type: 'fill',
@@ -2151,12 +2153,20 @@ function initArcgisMap() {
      source: 'pmg-lotes',
      paint: { 'line-color': '#a855f7', 'line-width': 1.5 },
    });
+   // Contorno mais grosso para a QUADRA inteira (visualmente separa um quarteirão do outro)
+   arcgisMap.addLayer({
+     id: 'pmg-quadras-linha',
+     type: 'line',
+     source: 'pmg-quadras',
+     paint: { 'line-color': '#6b21a8', 'line-width': 2.5 },
+   });
+   // Rótulo "quadra-lote" (ex: 343-22) no centro de cada lote
    arcgisMap.addLayer({
      id: 'pmg-lotes-label',
      type: 'symbol',
      source: 'pmg-lotes',
      layout: {
-       'text-field': ['concat', ['get', 'nm_qdr'], '-', ['get', 'nm_lot']],
+       'text-field': ['concat', ['get', '_qdr_lote'], '-', ['get', 'nm_lot']],
        'text-size': 11,
        'text-allow-overlap': false,
      },
@@ -2176,7 +2186,7 @@ function initArcgisMap() {
        .setLngLat(e.lngLat)
        .setHTML(
          '<div class="lote-popup">' +
-         '<b>Quadra:</b> ' + (p.nm_qdr || '—') + '<br>' +
+         '<b>Quadra:</b> ' + (p._qdr_lote || '—') + '<br>' +
          '<b>Lote:</b> ' + (p.nm_lot || '—') + '<br>' +
          '<b>Bairro:</b> ' + (p.nm_bai || '—') + '<br>' +
          '<b>IPTU:</b> ' + (p.nr_iptu || '—') +
@@ -2197,7 +2207,10 @@ function initArcgisMap() {
  });
 }
 
-// Busca os lotes dentro da área visível do mapa (carregamento automático ao navegar)
+// Busca os lotes E as quadras dentro da área visível do mapa (carregamento automático ao navegar).
+// A camada de lote, sozinha, não traz o número da quadra preenchido (nm_qdr vem vazio nela);
+// por isso buscamos também a camada "Divisas de Quadra" e juntamos os dois pelo id_qdr,
+// reconstruindo o rótulo completo "quadra-lote" (ex: 343-22), igual aparece no site da prefeitura.
 async function carregarLotesVisiveis() {
  if (!arcgisMap) return;
  const b = arcgisMap.getBounds();
@@ -2205,24 +2218,56 @@ async function carregarLotesVisiveis() {
    xmin: b.getWest(), ymin: b.getSouth(), xmax: b.getEast(), ymax: b.getNorth(),
    spatialReference: { wkid: 4326 },
  };
- const params = new URLSearchParams({
-   f: 'geojson',
-   where: '1=1',
-   outFields: 'nm_qdr,nm_lot,nm_bai,nr_iptu',
-   geometry: JSON.stringify(envelope),
-   geometryType: 'esriGeometryEnvelope',
-   spatialRel: 'esriSpatialRelIntersects',
-   inSR: '4326',
-   outSR: '4326',
+ const envelopeStr = JSON.stringify(envelope);
+
+ const paramsLote = new URLSearchParams({
+   f: 'geojson', where: '1=1',
+   outFields: 'nm_qdr,nm_lot,nm_bai,nr_iptu,id_qdr',
+   geometry: envelopeStr, geometryType: 'esriGeometryEnvelope',
+   spatialRel: 'esriSpatialRelIntersects', inSR: '4326', outSR: '4326',
  });
+ const paramsQuadra = new URLSearchParams({
+   f: 'geojson', where: '1=1',
+   outFields: 'nm_qdr,id',
+   geometry: envelopeStr, geometryType: 'esriGeometryEnvelope',
+   spatialRel: 'esriSpatialRelIntersects', inSR: '4326', outSR: '4326',
+ });
+
  try {
-   const r = await fetch(PMG_LOTE_URL + '?' + params.toString());
-   const geojson = await r.json();
-   if (geojson && geojson.type === 'FeatureCollection' && arcgisMap.getSource('pmg-lotes')) {
-     arcgisMap.getSource('pmg-lotes').setData(geojson);
+   const [rLote, rQuadra] = await Promise.all([
+     fetch(PMG_LOTE_URL + '?' + paramsLote.toString()),
+     fetch(PMG_QUADRA_URL + '?' + paramsQuadra.toString()),
+   ]);
+   const geoLote   = await rLote.json();
+   const geoQuadra = await rQuadra.json();
+
+   if (geoQuadra && geoQuadra.type === 'FeatureCollection' && arcgisMap.getSource('pmg-quadras')) {
+     arcgisMap.getSource('pmg-quadras').setData(geoQuadra);
+   }
+
+   // Mapa id da quadra → número da quadra, para anexar a cada lote
+   const numeroPorIdQuadra = {};
+   if (geoQuadra && geoQuadra.features) {
+     geoQuadra.features.forEach(f => {
+       if (f.properties && f.properties.id) numeroPorIdQuadra[f.properties.id] = f.properties.nm_qdr;
+     });
+   }
+
+   if (geoLote && geoLote.type === 'FeatureCollection' && arcgisMap.getSource('pmg-lotes')) {
+     let semQuadra = 0;
+     geoLote.features.forEach(f => {
+       const p = f.properties || {};
+       // Usa nm_qdr se já vier preenchido na própria feature de lote; senão busca pela quadra relacionada
+       p._qdr_lote = p.nm_qdr || numeroPorIdQuadra[p.id_qdr] || '';
+       if (!p._qdr_lote) semQuadra++;
+     });
+     if (semQuadra > 0) {
+       console.warn(`[PMG] ${semQuadra} de ${geoLote.features.length} lote(s) sem número de quadra resolvido — verifique os nomes dos campos de junção (id_qdr / id).`);
+     }
+     arcgisMap.getSource('pmg-lotes').setData(geoLote);
    }
  } catch (e) {
-   console.warn('Falha ao carregar lotes do Portal Mapa de Goiânia:', e);
+   console.warn('Falha ao carregar lotes/quadras do Portal Mapa de Goiânia:', e);
  }
 }
 
