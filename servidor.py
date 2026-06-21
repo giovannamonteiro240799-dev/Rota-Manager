@@ -69,7 +69,7 @@ HISTORICO_FILE = str(DATA_DIR / "historico_rotas.json")
 PLANOS = {
     "avulsa": {
         "nome":      "Importação Avulsa",
-        "preco":     3.99,
+        "preco":     2.00,
         "tipo":      "avulso",
         "dias":      None,
         "beneficio": "Use 1 importação avulsa",
@@ -78,7 +78,7 @@ PLANOS = {
     },
     "essencial": {
         "nome":      "Plano Essencial",
-        "preco":     59.99,
+        "preco":     30.00,
         "tipo":      "mensal",
         "dias":      30,
         "beneficio": "1 importação por dia",
@@ -87,7 +87,7 @@ PLANOS = {
     },
     "profissional": {
         "nome":      "Plano Profissional",
-        "preco":     99.90,
+        "preco":     60.00,
         "tipo":      "mensal",
         "dias":      30,
         "beneficio": "2 importações por dia",
