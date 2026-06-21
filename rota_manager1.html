@@ -3378,9 +3378,24 @@ function renderAssinatura(planos, status) {
     return;
   }
 
+  // Banner de pagamento pendente (link gerado, aguardando o usuário pagar
+  // ou aguardando a confirmação chegar)
+  if (status && status.pagamento_pendente) {
+    const nomePlano = (planos.find(p => p.id === status.pagamento_pendente.plano_id) || {}).nome
+      || status.pagamento_pendente.plano_id;
+    html += `
+      <div class="assinatura-pendente">
+        💳 Pagamento do <b>${escHtml(nomePlano)}</b> em aberto.
+        <a href="${escHtml(status.pagamento_pendente.url)}" target="_blank" rel="noopener">Abrir checkout novamente →</a>
+      </div>`;
+  }
+
   html += planos.map(p => {
     const popular = p.badge ? 'popular' : '';
     const periodo = p.tipo === 'avulso' ? 'PAGAMENTO ÚNICO' : 'POR MÊS';
+    const acao = p.pagamento_automatico
+      ? `pagarPlano('${escHtml(p.id)}', this)`
+      : `solicitarPlano('${escHtml(p.id)}', this)`;
     return `
     <div class="plano-card ${popular}">
       ${p.badge ? `<span class="plano-badge-popular">${escHtml(p.badge)}</span>` : ''}
@@ -3388,7 +3403,7 @@ function renderAssinatura(planos, status) {
       <div class="plano-preco">R$ <b>${fmtPreco(p.preco)}</b></div>
       <div class="plano-periodo">${periodo}</div>
       <div class="plano-beneficio">${escHtml(p.beneficio)}</div>
-      <button class="plano-btn" onclick="solicitarPlano('${escHtml(p.id)}', this)">Assinar ${escHtml(p.nome.split(' ').pop().toUpperCase())} →</button>
+      <button class="plano-btn" onclick="${acao}">Assinar ${escHtml(p.nome.split(' ').pop().toUpperCase())} →</button>
     </div>`;
   }).join('');
 
@@ -3396,8 +3411,8 @@ function renderAssinatura(planos, status) {
 }
 
 async function solicitarPlano(planoId, btn) {
-  // Ponto único de integração com pagamento de verdade no futuro:
-  // por enquanto só registra a solicitação (ver usuario_solicitar_plano no servidor.py).
+  // Fluxo MANUAL antigo (admin confirma depois) — só usado pelos planos
+  // com pagamento_automatico=false (Essencial/Profissional).
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
   try {
     const r = await fetch(SERVER + '/assinatura/solicitar', {
@@ -3417,6 +3432,67 @@ async function solicitarPlano(planoId, btn) {
   } catch (e) {
     alert('Não foi possível conectar ao servidor.');
     if (btn) { btn.disabled = false; }
+  }
+}
+
+async function pagarPlano(planoId, btn) {
+  // Fluxo AUTOMÁTICO (InfinitePay): pede um link de pagamento único pro
+  // servidor e manda o usuário pra lá. A liberação acontece sozinha quando
+  // o pagamento é confirmado (ver /assinatura/confirmar-pagamento e
+  // /webhook/infinitepay no servidor.py).
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando link...'; }
+  try {
+    const r = await fetch(SERVER + '/assinatura/pagar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ plano: planoId })
+    });
+    const d = await r.json();
+    if (d.ok && d.url) {
+      window.location.href = d.url;
+    } else {
+      alert(d.erro || 'Não foi possível gerar o link de pagamento.');
+      if (btn) { btn.disabled = false; }
+      carregarAssinatura();
+    }
+  } catch (e) {
+    alert('Não foi possível conectar ao servidor.');
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+// ── Retorno do checkout InfinitePay ─────────────────────────────────────
+// Quando o usuário paga e volta (redirect_url = .../?pagamento=retorno),
+// a InfinitePay anexa order_nsu, transaction_nsu, slug etc. na própria URL.
+// Confere o pagamento, limpa esses parâmetros da URL e atualiza a tela.
+async function confirmarPagamentoSeRetornouDoCheckout() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('pagamento') !== 'retorno' || !params.get('order_nsu')) return;
+
+  const orderNsu       = params.get('order_nsu');
+  const transactionNsu = params.get('transaction_nsu') || '';
+  const slug            = params.get('slug') || '';
+
+  // Limpa a URL imediatamente pra não reprocessar se o usuário atualizar a página
+  const urlLimpa = window.location.pathname;
+  window.history.replaceState({}, document.title, urlLimpa);
+
+  try {
+    const qs = new URLSearchParams({ order_nsu: orderNsu, transaction_nsu: transactionNsu, slug });
+    const r = await fetch(SERVER + '/assinatura/confirmar-pagamento?' + qs.toString(), {
+      headers: authHeaders()
+    });
+    const d = await r.json();
+    abrirAssinatura();
+    if (d.ok && d.pago) {
+      alert('✓ Pagamento confirmado! ' + (d.msg || ''));
+    } else if (d.ok) {
+      alert('Recebemos seu retorno do pagamento, mas ele ainda não foi confirmado. Se você já pagou, aguarde alguns instantes e abra a aba Assinatura de novo.');
+    } else {
+      alert(d.erro || 'Não foi possível confirmar o pagamento.');
+    }
+  } catch (e) {
+    alert('Não foi possível confirmar o pagamento com o servidor.');
   }
 }
 </script>
@@ -3731,6 +3807,7 @@ document.getElementById('header-user').style.display = 'flex';
 document.getElementById('header-username').textContent = user;
 document.getElementById('btn-admin').style.display = isAdminUser() ? '' : 'none';
 if (!_allRows.length) checarServidor();   // já dispara a checagem de acesso sem esperar o polling
+confirmarPagamentoSeRetornouDoCheckout();
 }
 
 // ── Sair ──────────────────────────────────────────────────────────────

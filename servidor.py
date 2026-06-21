@@ -63,6 +63,9 @@ HISTORICO_FILE = str(DATA_DIR / "historico_rotas.json")
 # admin_confirmar_plano(), sem precisar mexer no HTML.
 #   tipo 'avulso' -> credita 1 uso em avulsa_creditos (não expira por dia)
 #   tipo 'mensal'  -> credita "dias" de acesso em acesso_expira_em
+#   pagamento_automatico: True  -> fluxo via InfinitePay (ver seção abaixo),
+#                          False -> fluxo manual antigo (usuário solicita,
+#                          admin confirma no painel Admin)
 PLANOS = {
     "avulsa": {
         "nome":      "Importação Avulsa",
@@ -71,6 +74,7 @@ PLANOS = {
         "dias":      None,
         "beneficio": "Use 1 importação avulsa",
         "badge":     None,
+        "pagamento_automatico": True,
     },
     "essencial": {
         "nome":      "Plano Essencial",
@@ -79,6 +83,7 @@ PLANOS = {
         "dias":      30,
         "beneficio": "1 importação por dia",
         "badge":     None,
+        "pagamento_automatico": False,
     },
     "profissional": {
         "nome":      "Plano Profissional",
@@ -87,8 +92,26 @@ PLANOS = {
         "dias":      30,
         "beneficio": "2 importações por dia",
         "badge":     "MAIS POPULAR",
+        "pagamento_automatico": False,
     },
 }
+
+# ── Integração de pagamento automático (InfinitePay — Checkout Integrado) ─
+# Docs: https://ajuda.infinitepay.io/pt-BR/articles/10766888
+# Fluxo: nosso servidor pede um link de pagamento único pra InfinitePay
+# (POST /links, com um order_nsu que a gente inventa pra rastrear o pedido),
+# manda o usuário pra esse link e, quando ele paga, descobrimos isso de duas
+# formas complementares:
+#   1) Webhook: a InfinitePay chama nosso /webhook/infinitepay avisando.
+#      Só funciona se o servidor tiver uma URL pública (ex: Railway) — não
+#      funciona em localhost, porque a InfinitePay não alcança sua máquina.
+#   2) Confirmação ao voltar: quando o usuário é redirecionado de volta pro
+#      app após pagar, conferimos o pagamento direto (POST /payment_check).
+#      Essa é a via que funciona também em ambiente local.
+INFINITEPAY_HANDLE            = "moisessenju"
+INFINITEPAY_LINKS_URL         = "https://api.checkout.infinitepay.io/links"
+INFINITEPAY_PAYMENT_CHECK_URL = "https://api.checkout.infinitepay.io/payment_check"
+PAGAMENTO_LINK_REUSE_MINUTOS  = 30   # reaproveita o mesmo link se gerado há pouco tempo
 
 # ── Migração única: se o volume está vazio mas existem arquivos antigos
 #    na pasta do projeto (de antes do volume existir), copia pra dentro
@@ -645,21 +668,37 @@ def usuario_tem_acesso_ativo(username: str) -> bool:
 # ── Planos de assinatura: solicitar (usuário) / confirmar ou rejeitar (admin) ──
 
 def usuario_solicitar_plano(username: str, plano_id: str) -> tuple[bool, str]:
-    """Usuário pede um plano. Por enquanto não cobra nada de verdade — só
-    registra a solicitação para o admin liberar manualmente (próximo passo:
-    trocar isso por uma chamada real ao gateway de pagamento e só chegar
-    aqui depois da confirmação do pagamento)."""
+    """Usuário pede um plano pelo fluxo MANUAL (admin confirma depois no
+    painel Admin). Só vale pra planos com pagamento_automatico=False — os
+    planos automáticos usam usuario_iniciar_pagamento() em vez disso."""
     plano = PLANOS.get(plano_id)
     if plano is None:
         return False, "Plano inválido."
+    if plano.get("pagamento_automatico"):
+        return False, f"{plano['nome']} usa pagamento automático — use o botão de pagamento."
     users = carregar_usuarios()
     chave, u = _buscar_usuario(users, username)
     if u is None:
         return False, "Usuário não encontrado."
     u["plano_solicitado"]    = plano_id
     u["plano_solicitado_em"] = datetime.now().isoformat()
+    u.pop("pagamento_pendente", None)   # evita um link de pagamento antigo conflitando
     salvar_usuarios(users)
     return True, f"Solicitação de {plano['nome']} registrada. Aguarde a liberação do administrador."
+
+
+def _creditar_plano(u: dict, plano_id: str) -> str:
+    """Credita o plano (avulso vira +1 crédito de uso único; mensal vira N
+    dias de acesso) diretamente no dict do usuário já carregado. Quem chama
+    é responsável por dar salvar_usuarios() depois. Devolve a mensagem de
+    confirmação (sem o nome do usuário, que cada chamador adiciona)."""
+    plano = PLANOS[plano_id]
+    if plano["tipo"] == "avulso":
+        u["avulsa_creditos"] = int(u.get("avulsa_creditos", 0) or 0) + 1
+        return "1 crédito de importação avulsa liberado."
+    expira_em = datetime.now() + timedelta(days=plano["dias"])
+    u["acesso_expira_em"] = expira_em.isoformat()
+    return f"{plano['nome']} liberado até {expira_em.strftime('%d/%m/%Y %H:%M')}."
 
 
 def admin_confirmar_plano(username: str) -> tuple[bool, str]:
@@ -675,13 +714,11 @@ def admin_confirmar_plano(username: str) -> tuple[bool, str]:
     if plano is None:
         return False, "Este usuário não tem solicitação de plano pendente."
 
+    detalhe = _creditar_plano(u, plano_id)
     if plano["tipo"] == "avulso":
-        u["avulsa_creditos"] = int(u.get("avulsa_creditos", 0) or 0) + 1
         msg = f"1 crédito de importação avulsa liberado para \"{chave}\"."
     else:
-        expira_em = datetime.now() + timedelta(days=plano["dias"])
-        u["acesso_expira_em"] = expira_em.isoformat()
-        msg = f"{plano['nome']} liberado para \"{chave}\" até {expira_em.strftime('%d/%m/%Y %H:%M')}."
+        msg = f"{plano['nome']} liberado para \"{chave}\"."
 
     u.pop("plano_solicitado", None)
     u.pop("plano_solicitado_em", None)
@@ -699,6 +736,138 @@ def admin_rejeitar_plano(username: str) -> tuple[bool, str]:
     u.pop("plano_solicitado_em", None)
     salvar_usuarios(users)
     return True, "Solicitação removida."
+
+
+# ── InfinitePay: geração de link e checagem de pagamento ────────────────
+
+def _infinitepay_gerar_link(order_nsu: str, plano: dict, redirect_url: str, webhook_url: str) -> tuple[bool, str]:
+    """Chama POST /links da InfinitePay e devolve (True, url) ou (False, erro)."""
+    payload = {
+        "handle":       INFINITEPAY_HANDLE,
+        "redirect_url": redirect_url,
+        "webhook_url":  webhook_url,
+        "order_nsu":    order_nsu,
+        "items": [{
+            "quantity":    1,
+            "price":       int(round(plano["preco"] * 100)),   # InfinitePay usa centavos
+            "description": plano["nome"],
+        }],
+    }
+    try:
+        resp = requests.post(INFINITEPAY_LINKS_URL, json=payload, timeout=10)
+        data = resp.json()
+    except Exception as e:
+        return False, f"Não foi possível conectar à InfinitePay: {e}"
+
+    url = data.get("url")
+    if not resp.ok or not url:
+        erro = data.get("message") or data.get("error") or f"Erro {resp.status_code} ao gerar o link de pagamento."
+        return False, erro
+    return True, url
+
+
+def infinitepay_consultar_pagamento(order_nsu: str, transaction_nsu: str = "", slug: str = "") -> tuple[bool, dict | str]:
+    """Chama POST /payment_check da InfinitePay (verificação manual, usada
+    quando o usuário volta do checkout). Devolve (True, dict da resposta)
+    ou (False, mensagem de erro)."""
+    payload = {
+        "handle":          INFINITEPAY_HANDLE,
+        "order_nsu":       order_nsu,
+        "transaction_nsu": transaction_nsu,
+        "slug":            slug,
+    }
+    try:
+        resp = requests.post(INFINITEPAY_PAYMENT_CHECK_URL, json=payload, timeout=10)
+        data = resp.json()
+    except Exception as e:
+        return False, f"Não foi possível consultar o pagamento: {e}"
+    if not resp.ok:
+        return False, data.get("message") or f"Erro {resp.status_code} ao consultar pagamento."
+    return True, data
+
+
+def usuario_iniciar_pagamento(username: str, plano_id: str, base_url: str) -> tuple[bool, str]:
+    """Gera (ou reaproveita) o link de pagamento da InfinitePay pra um plano
+    com pagamento_automatico=True. Devolve (True, url) ou (False, mensagem
+    de erro). O order_nsu (nosso identificador do pedido) fica salvo no
+    registro do usuário em 'pagamento_pendente', pra reconhecermos o pedido
+    depois (no webhook ou na confirmação ao voltar do checkout)."""
+    plano = PLANOS.get(plano_id)
+    if plano is None:
+        return False, "Plano inválido."
+    if not plano.get("pagamento_automatico"):
+        return False, f"{plano['nome']} ainda usa o fluxo de solicitação manual."
+
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+
+    # Reaproveita um link já gerado recentemente pro mesmo plano, em vez de
+    # gerar um novo a cada clique (evita lixo de links na InfinitePay).
+    pendente = u.get("pagamento_pendente")
+    if pendente and pendente.get("plano_id") == plano_id:
+        try:
+            criado_em = datetime.fromisoformat(pendente["criado_em"])
+            if datetime.now() - criado_em < timedelta(minutes=PAGAMENTO_LINK_REUSE_MINUTOS):
+                return True, pendente["url"]
+        except (KeyError, ValueError):
+            pass
+
+    order_nsu = uuid.uuid4().hex
+    # A InfinitePay anexa order_nsu, transaction_nsu, slug etc. à redirect_url
+    # automaticamente ao mandar o usuário de volta — não precisamos embutir
+    # nada manualmente além de avisar que é um retorno do pagamento.
+    redirect_url = f"{base_url}/?pagamento=retorno"
+    webhook_url  = f"{base_url}/webhook/infinitepay"
+
+    ok, resultado = _infinitepay_gerar_link(order_nsu, plano, redirect_url, webhook_url)
+    if not ok:
+        return False, resultado
+
+    u["pagamento_pendente"] = {
+        "plano_id":  plano_id,
+        "order_nsu": order_nsu,
+        "url":       resultado,
+        "criado_em": datetime.now().isoformat(),
+    }
+    salvar_usuarios(users)
+    return True, resultado
+
+
+def processar_pagamento_confirmado(order_nsu: str, transaction_nsu: str = "", receipt_url: str = "") -> tuple[bool, str]:
+    """Localiza, entre todos os usuários, quem tem esse order_nsu pendente,
+    credita o plano correspondente e limpa a pendência. Usado tanto pelo
+    webhook quanto pela confirmação manual ao voltar do checkout — é seguro
+    chamar mais de uma vez pro mesmo order_nsu (idempotente: na segunda vez
+    a pendência já não existe mais, então não credita de novo)."""
+    users = carregar_usuarios()
+    chave_alvo, u_alvo = None, None
+    for chave, u in users.items():
+        pendente = u.get("pagamento_pendente")
+        if pendente and pendente.get("order_nsu") == order_nsu:
+            chave_alvo, u_alvo = chave, u
+            break
+
+    if u_alvo is None:
+        return False, "Pedido não encontrado."
+
+    plano_id = u_alvo["pagamento_pendente"].get("plano_id")
+    if plano_id not in PLANOS:
+        return False, "Plano do pedido não existe mais."
+
+    detalhe = _creditar_plano(u_alvo, plano_id)
+    u_alvo.pop("pagamento_pendente", None)
+    u_alvo["ultimo_pagamento"] = {
+        "plano_id":        plano_id,
+        "order_nsu":       order_nsu,
+        "transaction_nsu": transaction_nsu,
+        "receipt_url":     receipt_url,
+        "pago_em":         datetime.now().isoformat(),
+    }
+    salvar_usuarios(users)
+    print(f"  [INFINITEPAY] Pagamento confirmado para \"{chave_alvo}\" (order_nsu={order_nsu}). {detalhe}")
+    return True, detalhe
 
 
 def usuario_consumir_credito_avulso_se_necessario(username: str):
@@ -894,6 +1063,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type,X-RM-User')
         self.end_headers()
 
+    def _base_url(self) -> str:
+        """Monta a URL pública deste servidor a partir dos headers da
+        requisição — funciona tanto em localhost quanto atrás de um PaaS
+        com proxy (Railway/Render/Fly), usado pra montar redirect_url e
+        webhook_url da InfinitePay."""
+        host = self.headers.get('X-Forwarded-Host') or self.headers.get('Host') or f'localhost:{PORT}'
+        if host.split(':')[0] in ('localhost', '127.0.0.1'):
+            proto = 'http'
+        else:
+            proto = self.headers.get('X-Forwarded-Proto', 'https')
+        return f"{proto}://{host}"
+
     def check_auth(self):
         """Se APP_USER/APP_PASS definidos, exige Basic Auth. Sem eles, libera."""
         if not APP_USER or not APP_PASS:
@@ -966,7 +1147,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': True, 'planos': planos})
 
         # /assinatura/status — situação de assinatura do usuário logado
-        # (créditos avulsos, acesso mensal e solicitação pendente, se houver)
+        # (créditos avulsos, acesso mensal, solicitação pendente e/ou
+        # pagamento automático pendente, se houver)
         elif self.path == '/assinatura/status':
             sess = self._sessao_ou_401()
             if sess is None:
@@ -977,6 +1159,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'}, 404)
                 return
             plano_solicitado = u.get('plano_solicitado')
+            pendente = u.get('pagamento_pendente')
             self.send_json({
                 'ok': True,
                 'acesso_expira_em':    u.get('acesso_expira_em'),
@@ -984,7 +1167,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 'plano_solicitado':    plano_solicitado,
                 'plano_solicitado_em': u.get('plano_solicitado_em'),
                 'plano_solicitado_nome': PLANOS.get(plano_solicitado, {}).get('nome'),
+                'pagamento_pendente': {
+                    'plano_id':  pendente.get('plano_id'),
+                    'url':       pendente.get('url'),
+                    'criado_em': pendente.get('criado_em'),
+                } if pendente else None,
             })
+
+        # /assinatura/confirmar-pagamento — chamado pelo frontend quando o
+        # usuário volta do checkout da InfinitePay (com order_nsu etc. na
+        # URL de retorno). Confere o pagamento via /payment_check e credita
+        # se estiver pago. É o caminho que funciona mesmo em localhost,
+        # onde o webhook não consegue chegar.
+        elif self.path.startswith('/assinatura/confirmar-pagamento'):
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            from urllib.parse import urlparse, parse_qs
+            qs              = parse_qs(urlparse(self.path).query)
+            order_nsu       = qs.get('order_nsu', [''])[0]
+            transaction_nsu = qs.get('transaction_nsu', [''])[0]
+            slug            = qs.get('slug', [''])[0]
+            if not order_nsu:
+                self.send_json({'ok': False, 'erro': 'order_nsu ausente.'}, 400)
+                return
+
+            users = carregar_usuarios()
+            _, u = _buscar_usuario(users, sess['usuario'])
+            pendente = u.get('pagamento_pendente') if u else None
+            if not pendente or pendente.get('order_nsu') != order_nsu:
+                # Não há mais nada pendente com esse order_nsu — provavelmente
+                # já foi confirmado antes (ex: webhook chegou primeiro).
+                self.send_json({'ok': True, 'pago': True, 'msg': 'Pagamento já confirmado.'})
+                return
+
+            ok, info = infinitepay_consultar_pagamento(order_nsu, transaction_nsu, slug)
+            if not ok:
+                self.send_json({'ok': False, 'erro': info})
+                return
+            if not info.get('paid'):
+                self.send_json({'ok': True, 'pago': False, 'msg': 'Pagamento ainda não confirmado.'})
+                return
+
+            ok2, msg2 = processar_pagamento_confirmado(
+                order_nsu, transaction_nsu, info.get('receipt_url', '')
+            )
+            self.send_json({'ok': ok2, 'pago': ok2, 'msg': msg2})
 
         elif self.path == '/historico':
             sess = self._sessao_ou_401()
@@ -1152,6 +1380,58 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             ok, msg = usuario_solicitar_plano(sess['usuario'], data.get('plano', ''))
             self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /assinatura/pagar — usuário pede o link de pagamento automático
+        # (InfinitePay) pra um plano com pagamento_automatico=True.
+        if self.path == '/assinatura/pagar':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, resultado = usuario_iniciar_pagamento(sess['usuario'], data.get('plano', ''), self._base_url())
+            if ok:
+                self.send_json({'ok': True, 'url': resultado})
+            else:
+                self.send_json({'ok': False, 'erro': resultado})
+            return
+
+        # /webhook/infinitepay — chamado pela InfinitePay (servidor a servidor,
+        # SEM token de sessão) quando um pagamento é confirmado. Só funciona
+        # com o servidor publicamente acessível (não em localhost). Sempre
+        # responde rápido com o formato que a InfinitePay espera.
+        if self.path == '/webhook/infinitepay':
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                payload = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'success': False, 'message': 'JSON inválido.'}, 400)
+                return
+
+            order_nsu = payload.get('order_nsu', '')
+            if not order_nsu:
+                self.send_json({'success': False, 'message': 'order_nsu ausente.'}, 400)
+                return
+
+            ok, msg = processar_pagamento_confirmado(
+                order_nsu,
+                payload.get('transaction_nsu', ''),
+                payload.get('receipt_url', ''),
+            )
+            if ok:
+                self.send_json({'success': True, 'message': None}, 200)
+            elif msg == 'Pedido não encontrado.':
+                # idempotência: provavelmente já foi creditado antes (via
+                # confirmação ao voltar do checkout) — não é erro de verdade,
+                # respondemos 200 pra InfinitePay não ficar reenviando à toa.
+                self.send_json({'success': True, 'message': None}, 200)
+            else:
+                self.send_json({'success': False, 'message': msg}, 400)
             return
 
         # /admin/usuarios/criar — cria usuário direto, sem confirmação por email (só admin)
