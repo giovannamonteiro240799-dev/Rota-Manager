@@ -251,6 +251,117 @@ def confirmar_cadastro(pending_token: str, codigo: str) -> tuple[bool, str]:
     return True, "Conta criada com sucesso."
 
 
+# ════════════════════════════════════════════════════════════════════════
+#  RECUPERAÇÃO DE SENHA
+#  Pendências em memória (recovery_token → {username, codigo, tentativas, criado_em})
+#  até o código de 6 dígitos ser confirmado e a nova senha definida.
+# ════════════════════════════════════════════════════════════════════════
+
+_recuperacoes_pendentes: dict = {}   # { recovery_token: {...} }
+
+
+def _buscar_usuario_por_login_ou_email(users: dict, identificador: str):
+    """Aceita usuário (case-insensitive) OU email (case-insensitive).
+    Retorna (chave_original, dados) ou (None, None)."""
+    alvo = (identificador or '').strip().lower()
+    if not alvo:
+        return None, None
+    chave, dados = _buscar_usuario(users, identificador)
+    if dados is not None:
+        return chave, dados
+    for chave, dados in users.items():
+        if dados.get('email', '').lower() == alvo:
+            return chave, dados
+    return None, None
+
+
+def _limpar_recuperacoes_expiradas():
+    agora = datetime.now()
+    expirados = [
+        t for t, c in _recuperacoes_pendentes.items()
+        if agora - c['criado_em'] > timedelta(minutes=EMAIL_TTL_MINUTOS)
+    ]
+    for t in expirados:
+        del _recuperacoes_pendentes[t]
+
+
+def iniciar_recuperacao_senha(identificador: str) -> tuple[bool, str, str | None]:
+    """Busca o usuário por login ou email, envia código se ele tiver email
+    cadastrado. Retorna (ok, mensagem, recovery_token)."""
+    _limpar_recuperacoes_expiradas()
+
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario_por_login_ou_email(users, identificador)
+
+    if u is None:
+        return False, "Usuário ou email não encontrado.", None
+
+    email = u.get('email', '').strip()
+    if not email:
+        return False, ("Esta conta não possui email cadastrado para recuperação automática. "
+                        "Peça ao administrador para redefinir sua senha."), None
+
+    codigo = _gerar_codigo()
+    ok, erro = enviar_codigo_email(email, codigo)
+    if not ok:
+        return False, erro, None
+
+    recovery_token = secrets.token_hex(16)
+    _recuperacoes_pendentes[recovery_token] = {
+        'username':  chave,
+        'email':     email,
+        'codigo':    codigo,
+        'tentativas': 0,
+        'criado_em': datetime.now(),
+    }
+    # email mascarado para exibir na tela ("mo***@gmail.com")
+    em_user, _, em_dom = email.partition('@')
+    mascarado = (em_user[:2] + '***@' + em_dom) if len(em_user) > 2 else ('***@' + em_dom)
+    return True, mascarado, recovery_token
+
+
+def confirmar_codigo_recuperacao(recovery_token: str, codigo: str) -> tuple[bool, str]:
+    """Confere o código de recuperação, sem ainda alterar a senha."""
+    _limpar_recuperacoes_expiradas()
+    pend = _recuperacoes_pendentes.get(recovery_token)
+    if pend is None:
+        return False, "Solicitação expirada ou inválida. Comece novamente."
+
+    pend['tentativas'] += 1
+    if pend['tentativas'] > 5:
+        del _recuperacoes_pendentes[recovery_token]
+        return False, "Muitas tentativas incorretas. Solicite um novo código."
+
+    if codigo.strip() != pend['codigo']:
+        return False, "Código incorreto."
+
+    pend['confirmado'] = True
+    return True, "Código confirmado."
+
+
+def redefinir_senha_recuperacao(recovery_token: str, nova_senha: str) -> tuple[bool, str]:
+    """Efetiva a troca de senha — exige que o código já tenha sido confirmado."""
+    _limpar_recuperacoes_expiradas()
+    pend = _recuperacoes_pendentes.get(recovery_token)
+    if pend is None:
+        return False, "Solicitação expirada ou inválida. Comece novamente."
+    if not pend.get('confirmado'):
+        return False, "Confirme o código antes de definir a nova senha."
+    if not nova_senha or len(nova_senha) < 4:
+        return False, "A nova senha deve ter pelo menos 4 caracteres."
+
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, pend['username'])
+    if u is None:
+        del _recuperacoes_pendentes[recovery_token]
+        return False, "Usuário não encontrado."
+
+    u['hash'] = _hash_senha(nova_senha)
+    salvar_usuarios(users)
+    del _recuperacoes_pendentes[recovery_token]
+    return True, "Senha redefinida com sucesso. Faça login com a nova senha."
+
+
 
 
 def carregar_historico() -> list:
@@ -723,6 +834,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             ok, msg = confirmar_cadastro(
                 data.get('pending_token', ''), data.get('codigo', '')
+            )
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /auth/recuperar — Etapa 1: recebe usuário ou email, envia código
+        if self.path == '/auth/recuperar':
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg, recovery_token = iniciar_recuperacao_senha(data.get('identificador', ''))
+            resp = {'ok': ok}
+            if ok:
+                resp['email_mascarado'] = msg
+                resp['recovery_token'] = recovery_token
+            else:
+                resp['erro'] = msg
+            self.send_json(resp)
+            return
+
+        # /auth/recuperar-confirmar — Etapa 2: confere o código de 6 dígitos
+        if self.path == '/auth/recuperar-confirmar':
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = confirmar_codigo_recuperacao(
+                data.get('recovery_token', ''), data.get('codigo', '')
+            )
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /auth/recuperar-nova-senha — Etapa 3: define a nova senha
+        if self.path == '/auth/recuperar-nova-senha':
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = redefinir_senha_recuperacao(
+                data.get('recovery_token', ''), data.get('nova_senha', '')
             )
             self.send_json({'ok': ok, 'msg': msg})
             return

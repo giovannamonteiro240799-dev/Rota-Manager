@@ -984,6 +984,9 @@ transition: .15s;
 </div>
 </div>
 <button class="btn-login" id="btn-entrar" onclick="fazerLogin()">Entrar</button>
+<div style="text-align:center;margin-top:10px">
+<a href="javascript:void(0)" onclick="abrirRecuperarSenha()" style="font-size:12px;color:#9ca3af;text-decoration:underline;cursor:pointer">Esqueci minha senha</a>
+</div>
 </div>
 
 <!-- Formulário Cadastrar -->
@@ -1033,6 +1036,55 @@ transition: .15s;
 </div>
 <button class="btn-login" id="btn-confirmar-codigo" onclick="confirmarCodigo()">Confirmar e criar conta</button>
 <button class="btn-login" style="background:transparent;color:#9ca3af;margin-top:6px" onclick="cancelarConfirmacao()">‹ Voltar</button>
+</div>
+
+<!-- Formulário Recuperar senha — etapa 1: usuário ou email -->
+<div id="form-recuperar" style="display:none">
+<div class="login-field">
+<label>Usuário ou email</label>
+<p style="font-size:13px;color:#9ca3af;margin:0 0 10px 0">Informe seu usuário ou email cadastrado. Enviaremos um código de verificação.</p>
+<div class="login-input-wrap">
+<span class="icon">👤</span>
+<input class="login-input" id="rec-identificador" type="text" placeholder="Usuário ou email" autocomplete="username" onkeydown="if(event.key==='Enter')solicitarRecuperacao()">
+</div>
+</div>
+<button class="btn-login" id="btn-rec-solicitar" onclick="solicitarRecuperacao()">Enviar código</button>
+<button class="btn-login" style="background:transparent;color:#9ca3af;margin-top:6px" onclick="cancelarRecuperacao()">‹ Voltar</button>
+</div>
+
+<!-- Formulário Recuperar senha — etapa 2: código -->
+<div id="form-recuperar-codigo" style="display:none">
+<div class="login-field">
+<label>Código de verificação</label>
+<p style="font-size:13px;color:#9ca3af;margin:0 0 10px 0">Enviamos um código de 6 dígitos para <strong id="rec-email-alvo"></strong>. Confira também a caixa de spam.</p>
+<div class="login-input-wrap">
+<span class="icon">🔢</span>
+<input class="login-input" id="rec-codigo" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')confirmarCodigoRecuperacao()">
+</div>
+</div>
+<button class="btn-login" id="btn-rec-confirmar" onclick="confirmarCodigoRecuperacao()">Confirmar código</button>
+<button class="btn-login" style="background:transparent;color:#9ca3af;margin-top:6px" onclick="cancelarRecuperacao()">‹ Voltar</button>
+</div>
+
+<!-- Formulário Recuperar senha — etapa 3: nova senha -->
+<div id="form-recuperar-senha" style="display:none">
+<div class="login-field">
+<label>Nova senha</label>
+<div class="login-input-wrap">
+<span class="icon">🔒</span>
+<input class="login-input" id="rec-nova-pass" type="password" placeholder="Escolha uma nova senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')document.getElementById('rec-nova-pass2').focus()">
+<button class="toggle-pass" onclick="toggleSenha('rec-nova-pass',this)" title="Mostrar/ocultar senha">👁</button>
+</div>
+</div>
+<div class="login-field">
+<label>Confirmar nova senha</label>
+<div class="login-input-wrap">
+<span class="icon">🔑</span>
+<input class="login-input" id="rec-nova-pass2" type="password" placeholder="Repita a nova senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')redefinirSenha()">
+<button class="toggle-pass" onclick="toggleSenha('rec-nova-pass2',this)" title="Mostrar/ocultar senha">👁</button>
+</div>
+</div>
+<button class="btn-login" id="btn-rec-redefinir" onclick="redefinirSenha()">Redefinir senha</button>
 </div>
 </div>
 </div>
@@ -2998,6 +3050,9 @@ clearMsgs();
 document.getElementById('form-entrar').style.display    = tab === 'entrar'   ? '' : 'none';
 document.getElementById('form-cadastro').style.display  = tab === 'cadastro' ? '' : 'none';
 document.getElementById('form-confirmar').style.display = 'none';
+document.getElementById('form-recuperar').style.display = 'none';
+document.getElementById('form-recuperar-codigo').style.display = 'none';
+document.getElementById('form-recuperar-senha').style.display  = 'none';
 document.getElementById('tab-entrar').className  = 'login-tab' + (tab === 'entrar'   ? ' active' : '');
 document.getElementById('tab-cadastro').className = 'login-tab' + (tab === 'cadastro' ? ' active' : '');
 document.getElementById('tab-entrar').style.display   = '';
@@ -3140,6 +3195,127 @@ _pendingUsuario = null;
 clearMsgs();
 document.getElementById('form-confirmar').style.display = 'none';
 switchTab('cadastro');
+}
+
+// ── Recuperar senha — Etapa 1: usuário ou email → envia código ─────────
+let _recoveryToken = null;
+
+function abrirRecuperarSenha() {
+clearMsgs();
+document.getElementById('rec-identificador').value = '';
+document.getElementById('form-entrar').style.display = 'none';
+document.getElementById('form-recuperar').style.display = '';
+document.getElementById('tab-entrar').style.display   = 'none';
+document.getElementById('tab-cadastro').style.display = 'none';
+setTimeout(() => document.getElementById('rec-identificador').focus(), 50);
+}
+
+function cancelarRecuperacao() {
+_recoveryToken = null;
+clearMsgs();
+document.getElementById('form-recuperar').style.display = 'none';
+document.getElementById('form-recuperar-codigo').style.display = 'none';
+document.getElementById('form-recuperar-senha').style.display = 'none';
+switchTab('entrar');
+}
+
+async function solicitarRecuperacao() {
+const identificador = document.getElementById('rec-identificador').value.trim();
+if (!identificador) { showError('Informe seu usuário ou email.'); return; }
+
+setBtnLoading('btn-rec-solicitar', true, 'Enviar código');
+clearMsgs();
+try {
+const r = await fetch(SERVER + '/auth/recuperar', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ identificador })
+});
+const d = await r.json();
+if (d.ok) {
+_recoveryToken = d.recovery_token;
+document.getElementById('rec-email-alvo').textContent = d.email_mascarado;
+document.getElementById('rec-codigo').value = '';
+document.getElementById('form-recuperar').style.display = 'none';
+document.getElementById('form-recuperar-codigo').style.display = '';
+clearMsgs();
+setTimeout(() => document.getElementById('rec-codigo').focus(), 50);
+} else {
+showError(d.erro || 'Não foi possível iniciar a recuperação.');
+}
+} catch(e) {
+showError('Não foi possível conectar ao servidor.');
+} finally {
+setBtnLoading('btn-rec-solicitar', false, 'Enviar código');
+}
+}
+
+// ── Recuperar senha — Etapa 2: confirma o código de 6 dígitos ──────────
+async function confirmarCodigoRecuperacao() {
+const codigo = document.getElementById('rec-codigo').value.trim();
+if (!codigo || codigo.length !== 6) { showError('Informe o código de 6 dígitos.'); return; }
+if (!_recoveryToken) { showError('Solicitação expirada. Comece novamente.'); cancelarRecuperacao(); return; }
+
+setBtnLoading('btn-rec-confirmar', true, 'Confirmar código');
+clearMsgs();
+try {
+const r = await fetch(SERVER + '/auth/recuperar-confirmar', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ recovery_token: _recoveryToken, codigo })
+});
+const d = await r.json();
+if (d.ok) {
+document.getElementById('rec-nova-pass').value = '';
+document.getElementById('rec-nova-pass2').value = '';
+document.getElementById('form-recuperar-codigo').style.display = 'none';
+document.getElementById('form-recuperar-senha').style.display  = '';
+clearMsgs();
+setTimeout(() => document.getElementById('rec-nova-pass').focus(), 50);
+} else {
+showError(d.msg || 'Código incorreto.');
+}
+} catch(e) {
+showError('Não foi possível conectar ao servidor.');
+} finally {
+setBtnLoading('btn-rec-confirmar', false, 'Confirmar código');
+}
+}
+
+// ── Recuperar senha — Etapa 3: define a nova senha ──────────────────────
+async function redefinirSenha() {
+const senha  = document.getElementById('rec-nova-pass').value;
+const senha2 = document.getElementById('rec-nova-pass2').value;
+if (!senha)           { showError('Informe a nova senha.'); return; }
+if (senha.length < 4) { showError('Senha deve ter pelo menos 4 caracteres.'); return; }
+if (senha !== senha2) { showError('As senhas não coincidem.'); return; }
+if (!_recoveryToken)  { showError('Solicitação expirada. Comece novamente.'); cancelarRecuperacao(); return; }
+
+setBtnLoading('btn-rec-redefinir', true, 'Redefinir senha');
+clearMsgs();
+try {
+const r = await fetch(SERVER + '/auth/recuperar-nova-senha', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ recovery_token: _recoveryToken, nova_senha: senha })
+});
+const d = await r.json();
+if (d.ok) {
+showSuccess('✅ Senha redefinida com sucesso! Agora faça login.');
+_recoveryToken = null;
+setTimeout(() => {
+document.getElementById('form-recuperar-senha').style.display = 'none';
+switchTab('entrar');
+document.getElementById('in-pass').focus();
+}, 1400);
+} else {
+showError(d.msg || 'Não foi possível redefinir a senha.');
+}
+} catch(e) {
+showError('Não foi possível conectar ao servidor.');
+} finally {
+setBtnLoading('btn-rec-redefinir', false, 'Redefinir senha');
+}
 }
 
 // ── Entrar no app ─────────────────────────────────────────────────────
