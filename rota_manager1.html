@@ -214,6 +214,109 @@ header .badge b { color: var(--accent2); }
     #admin-panel { width: 100vw; }
   }
 
+  /* ── Painel Assinatura (mesmo padrão visual do histórico/admin) ── */
+  #assinatura-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #assinatura-overlay.show { display: flex; }
+  #assinatura-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 380px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+    animation: slideIn .18s ease;
+  }
+  #assinatura-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #assinatura-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #assinatura-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #assinatura-header .close-btn:hover { color: var(--text); }
+  #assinatura-body { flex: 1; overflow-y: auto; padding: 16px 14px; }
+
+  .assinatura-pendente {
+    background: rgba(245,158,11,.08);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+  .assinatura-pendente b { color: var(--accent); }
+  .assinatura-pendente button {
+    margin-top: 8px; background: none; border: 1px solid var(--border); color: var(--muted);
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .assinatura-pendente button:hover { border-color: var(--danger); color: var(--danger); }
+
+  .assinatura-ativa {
+    background: rgba(74,222,128,.08);
+    border: 1px solid #4ade80;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+  .assinatura-ativa b { color: #4ade80; }
+
+  .plano-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 16px;
+    margin-bottom: 14px;
+    text-align: center;
+    position: relative;
+  }
+  .plano-card.popular { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+  .plano-badge-popular {
+    position: absolute; top: -11px; right: 14px;
+    background: var(--accent2); color: #fff; font-size: 10px; font-weight: 800;
+    letter-spacing: .03em; border-radius: 999px; padding: 4px 12px;
+  }
+  .plano-nome { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .plano-preco { margin: 8px 0 2px; font-size: 15px; color: var(--text); }
+  .plano-preco b { font-size: 32px; font-weight: 800; }
+  .plano-periodo { font-size: 11px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .plano-beneficio {
+    margin: 14px 0; font-size: 12px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .plano-beneficio::before { content: "✓"; color: var(--accent2); font-weight: 700; }
+  .plano-btn {
+    width: 100%; padding: 12px; border: none; border-radius: 8px;
+    background: var(--accent2); color: #fff; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: filter .15s;
+  }
+  .plano-btn:hover { filter: brightness(1.12); }
+  .plano-btn:disabled { opacity: .5; cursor: default; filter: none; }
+  #assinatura-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+  @media (max-width: 640px) {
+    #assinatura-panel { width: 100vw; }
+  }
+
   /* botão histórico no header */
   .btn-hist {
     background: var(--surface2);
@@ -1142,6 +1245,20 @@ transition: .15s;
   </div>
 </div>
 
+<!-- ══ PAINEL ASSINATURA ══ -->
+<div id="assinatura-overlay" onclick="fecharAssinatura(event)">
+  <div id="assinatura-panel">
+    <div id="assinatura-header">
+      <span>💳</span>
+      <span class="title">Planos de Assinatura</span>
+      <button class="close-btn" onclick="fecharAssinatura()">✕</button>
+    </div>
+    <div id="assinatura-body">
+      <div id="assinatura-empty">Carregando planos...</div>
+    </div>
+  </div>
+</div>
+
 
 <header>
 <div class="logo">🗺 ROTA<span>MANAGER</span></div>
@@ -1191,9 +1308,7 @@ Escolher arquivo .xlsx
 <div class="drop-icon">🔒</div>
 <div class="drop-title" style="color:var(--danger)">Assinatura vencida</div>
 <div class="drop-sub">Nenhuma rota ativa</div>
-<div style="font-size:13px;margin-top:6px;color:var(--muted)">
-Fale com o administrador para renovar seu acesso.
-</div>
+<button class="drop-btn" onclick="abrirAssinatura()">🔓 Realizar nova assinatura</button>
 </div>
 
 <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
@@ -3006,6 +3121,22 @@ function renderListaAdmin(lista) {
     } else {
       statusHtml = `<span class="admin-acesso-badge admin-acesso-sem">✕ Sem acesso</span>`;
     }
+    if (!u.is_admin && u.avulsa_creditos > 0) {
+      statusHtml += ` <span class="admin-acesso-badge admin-acesso-ok">🎟 ${u.avulsa_creditos} avulsa(s)</span>`;
+    }
+
+    let planoPendenteHtml = '';
+    if (!u.is_admin && u.plano_solicitado) {
+      const dataSolic = u.plano_solicitado_em ? new Date(u.plano_solicitado_em).toLocaleString('pt-BR') : '';
+      planoPendenteHtml = `
+      <div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,.08);border:1px solid var(--accent);border-radius:6px;font-size:11px;color:var(--text)">
+        💳 Solicitou <b style="color:var(--accent)">${escHtml(u.plano_solicitado.toUpperCase())}</b>${dataSolic ? ` em ${dataSolic}` : ''}
+      </div>
+      <div class="admin-item-actions">
+        <button onclick="adminConfirmarPlano('${escHtml(u.usuario)}')">✅ Confirmar plano</button>
+        <button class="danger" onclick="adminRejeitarPlano('${escHtml(u.usuario)}')">✕ Rejeitar</button>
+      </div>`;
+    }
 
     return `
     <div class="admin-item">
@@ -3024,6 +3155,7 @@ function renderListaAdmin(lista) {
         <button onclick="adminLiberarAcesso('${escHtml(u.usuario)}')">📂 Liberar acesso</button>
         ${(temAcesso || expiraEm) ? `<button class="danger" onclick="adminRevogarAcesso('${escHtml(u.usuario)}')">🚫 Revogar acesso</button>` : ''}
       </div>` : ''}
+      ${planoPendenteHtml}
     </div>
   `;
   }).join('');
@@ -3127,6 +3259,159 @@ async function adminRevogarAcesso(usuario) {
     if (d.ok) carregarListaAdmin();
   } catch (e) {
     adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+
+async function adminConfirmarPlano(usuario) {
+  if (!confirm(`Confirmar e liberar o plano solicitado por "${usuario}"?`)) return;
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/confirmar-plano', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) carregarListaAdmin();
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+
+async function adminRejeitarPlano(usuario) {
+  if (!confirm(`Descartar a solicitação de plano de "${usuario}"?`)) return;
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/rejeitar-plano', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) carregarListaAdmin();
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  }
+}
+</script>
+
+<!-- ══ LÓGICA DA ABA ASSINATURA ══ -->
+<script>
+// ══════════════════════════════════════════════════════════
+//  ABA "ASSINATURA" — mostra os planos e registra a solicitação.
+//  Por enquanto não cobra de verdade: o pedido fica pendente até o
+//  admin confirmar manualmente (ver painel Admin). Quando o gateway de
+//  pagamento (PIX/cartão) entrar, é só trocar o miolo de solicitarPlano()
+//  por uma chamada real e manter o resto (cards, status, confirmação) igual.
+// ══════════════════════════════════════════════════════════
+
+function abrirAssinatura() {
+  document.getElementById('assinatura-overlay').classList.add('show');
+  carregarAssinatura();
+}
+
+function fecharAssinatura(e) {
+  if (e && e.target !== document.getElementById('assinatura-overlay')) return;
+  document.getElementById('assinatura-overlay').classList.remove('show');
+}
+
+function fmtPreco(v) {
+  return v.toFixed(2).replace('.', ',');
+}
+
+async function carregarAssinatura() {
+  const body = document.getElementById('assinatura-body');
+  body.innerHTML = '<div id="assinatura-empty">Carregando planos...</div>';
+  try {
+    const [rPlanos, rStatus] = await Promise.all([
+      fetch(SERVER + '/planos', { headers: authHeaders() }),
+      fetch(SERVER + '/assinatura/status', { headers: authHeaders() }),
+    ]);
+    const dPlanos = await rPlanos.json();
+    const dStatus = await rStatus.json();
+    if (!dPlanos.ok) {
+      body.innerHTML = `<div id="assinatura-empty">${escHtml(dPlanos.erro || 'Não foi possível carregar os planos.')}</div>`;
+      return;
+    }
+    renderAssinatura(dPlanos.planos || [], dStatus.ok ? dStatus : null);
+  } catch (e) {
+    body.innerHTML = '<div id="assinatura-empty">Não foi possível conectar ao servidor.</div>';
+  }
+}
+
+function renderAssinatura(planos, status) {
+  const body = document.getElementById('assinatura-body');
+  let html = '';
+
+  // Banner de solicitação pendente
+  if (status && status.plano_solicitado) {
+    const dataFmt = status.plano_solicitado_em
+      ? new Date(status.plano_solicitado_em).toLocaleString('pt-BR')
+      : '';
+    html += `
+      <div class="assinatura-pendente">
+        ⏳ Você solicitou o <b>${escHtml(status.plano_solicitado_nome || status.plano_solicitado)}</b>${dataFmt ? ` em ${dataFmt}` : ''}.
+        Aguardando liberação do administrador.
+      </div>`;
+  }
+
+  // Banner de acesso já ativo (créditos avulsos ou plano mensal vigente)
+  if (status) {
+    const agora = Date.now();
+    const expiraEm = status.acesso_expira_em ? new Date(status.acesso_expira_em) : null;
+    const temMensal = expiraEm && expiraEm.getTime() > agora;
+    if (temMensal) {
+      html += `<div class="assinatura-ativa">✓ Você já tem <b>acesso ativo</b> até ${expiraEm.toLocaleDateString('pt-BR')}.</div>`;
+    } else if (status.avulsa_creditos > 0) {
+      html += `<div class="assinatura-ativa">✓ Você tem <b>${status.avulsa_creditos}</b> importação(ões) avulsa(s) disponível(eis).</div>`;
+    }
+  }
+
+  if (!planos.length) {
+    html += '<div id="assinatura-empty">Nenhum plano disponível no momento.</div>';
+    body.innerHTML = html;
+    return;
+  }
+
+  html += planos.map(p => {
+    const popular = p.badge ? 'popular' : '';
+    const periodo = p.tipo === 'avulso' ? 'PAGAMENTO ÚNICO' : 'POR MÊS';
+    return `
+    <div class="plano-card ${popular}">
+      ${p.badge ? `<span class="plano-badge-popular">${escHtml(p.badge)}</span>` : ''}
+      <div class="plano-nome">${escHtml(p.nome)}</div>
+      <div class="plano-preco">R$ <b>${fmtPreco(p.preco)}</b></div>
+      <div class="plano-periodo">${periodo}</div>
+      <div class="plano-beneficio">${escHtml(p.beneficio)}</div>
+      <button class="plano-btn" onclick="solicitarPlano('${escHtml(p.id)}', this)">Assinar ${escHtml(p.nome.split(' ').pop().toUpperCase())} →</button>
+    </div>`;
+  }).join('');
+
+  body.innerHTML = html;
+}
+
+async function solicitarPlano(planoId, btn) {
+  // Ponto único de integração com pagamento de verdade no futuro:
+  // por enquanto só registra a solicitação (ver usuario_solicitar_plano no servidor.py).
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+  try {
+    const r = await fetch(SERVER + '/assinatura/solicitar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ plano: planoId })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(d.msg);
+      carregarAssinatura();
+    } else {
+      alert(d.msg || d.erro || 'Não foi possível registrar a solicitação.');
+      if (btn) { btn.disabled = false; }
+      carregarAssinatura();
+    }
+  } catch (e) {
+    alert('Não foi possível conectar ao servidor.');
+    if (btn) { btn.disabled = false; }
   }
 }
 </script>

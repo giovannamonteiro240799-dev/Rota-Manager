@@ -56,6 +56,40 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 USERS_FILE     = str(DATA_DIR / "usuarios.json")
 HISTORICO_FILE = str(DATA_DIR / "historico_rotas.json")
 
+# ── Planos de assinatura ──────────────────────────────────────────────────
+# Fonte única de verdade dos planos (preço, tipo, benefício). O frontend
+# busca essa lista via GET /planos em vez de hardcodar — assim, quando o
+# pagamento de verdade (PIX/cartão) entrar, só mexe aqui + na função
+# admin_confirmar_plano(), sem precisar mexer no HTML.
+#   tipo 'avulso' -> credita 1 uso em avulsa_creditos (não expira por dia)
+#   tipo 'mensal'  -> credita "dias" de acesso em acesso_expira_em
+PLANOS = {
+    "avulsa": {
+        "nome":      "Importação Avulsa",
+        "preco":     3.99,
+        "tipo":      "avulso",
+        "dias":      None,
+        "beneficio": "Use 1 importação avulsa",
+        "badge":     None,
+    },
+    "essencial": {
+        "nome":      "Plano Essencial",
+        "preco":     59.99,
+        "tipo":      "mensal",
+        "dias":      30,
+        "beneficio": "1 importação por dia",
+        "badge":     None,
+    },
+    "profissional": {
+        "nome":      "Plano Profissional",
+        "preco":     99.90,
+        "tipo":      "mensal",
+        "dias":      30,
+        "beneficio": "2 importações por dia",
+        "badge":     "MAIS POPULAR",
+    },
+}
+
 # ── Migração única: se o volume está vazio mas existem arquivos antigos
 #    na pasta do projeto (de antes do volume existir), copia pra dentro
 #    do volume uma única vez, pra não perder usuários já cadastrados. ──
@@ -483,10 +517,13 @@ def admin_listar_usuarios() -> list:
     out = []
     for nome, dados in users.items():
         out.append({
-            "usuario":          nome,
-            "email":            dados.get("email", ""),
-            "is_admin":         bool(dados.get("is_admin", False)),
-            "acesso_expira_em": dados.get("acesso_expira_em"),   # ISO string ou None
+            "usuario":            nome,
+            "email":              dados.get("email", ""),
+            "is_admin":           bool(dados.get("is_admin", False)),
+            "acesso_expira_em":   dados.get("acesso_expira_em"),    # ISO string ou None
+            "avulsa_creditos":    int(dados.get("avulsa_creditos", 0) or 0),
+            "plano_solicitado":   dados.get("plano_solicitado"),    # id do plano ou None
+            "plano_solicitado_em": dados.get("plano_solicitado_em"),
         })
     out.sort(key=lambda u: u["usuario"].lower())
     return out
@@ -589,19 +626,105 @@ def admin_revogar_acesso(username: str) -> tuple[bool, str]:
 
 
 def usuario_tem_acesso_ativo(username: str) -> bool:
-    """True se acesso_expira_em existir e ainda não tiver passado."""
+    """True se acesso_expira_em (plano mensal) ainda não passou, OU se o
+    usuário tem pelo menos 1 crédito de importação avulsa disponível."""
     users = carregar_usuarios()
     _, u = _buscar_usuario(users, username)
     if u is None:
         return False
     expira_raw = u.get("acesso_expira_em")
-    if not expira_raw:
-        return False
-    try:
-        expira_em = datetime.fromisoformat(expira_raw)
-    except ValueError:
-        return False
-    return datetime.now() < expira_em
+    if expira_raw:
+        try:
+            if datetime.now() < datetime.fromisoformat(expira_raw):
+                return True
+        except ValueError:
+            pass
+    return int(u.get("avulsa_creditos", 0) or 0) > 0
+
+
+# ── Planos de assinatura: solicitar (usuário) / confirmar ou rejeitar (admin) ──
+
+def usuario_solicitar_plano(username: str, plano_id: str) -> tuple[bool, str]:
+    """Usuário pede um plano. Por enquanto não cobra nada de verdade — só
+    registra a solicitação para o admin liberar manualmente (próximo passo:
+    trocar isso por uma chamada real ao gateway de pagamento e só chegar
+    aqui depois da confirmação do pagamento)."""
+    plano = PLANOS.get(plano_id)
+    if plano is None:
+        return False, "Plano inválido."
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    u["plano_solicitado"]    = plano_id
+    u["plano_solicitado_em"] = datetime.now().isoformat()
+    salvar_usuarios(users)
+    return True, f"Solicitação de {plano['nome']} registrada. Aguarde a liberação do administrador."
+
+
+def admin_confirmar_plano(username: str) -> tuple[bool, str]:
+    """Admin confirma a solicitação pendente: credita o plano (avulso vira
+    +1 crédito de uso único; mensal vira N dias de acesso, mesma mecânica
+    do 'Liberar acesso' que já existia)."""
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    plano_id = u.get("plano_solicitado")
+    plano = PLANOS.get(plano_id)
+    if plano is None:
+        return False, "Este usuário não tem solicitação de plano pendente."
+
+    if plano["tipo"] == "avulso":
+        u["avulsa_creditos"] = int(u.get("avulsa_creditos", 0) or 0) + 1
+        msg = f"1 crédito de importação avulsa liberado para \"{chave}\"."
+    else:
+        expira_em = datetime.now() + timedelta(days=plano["dias"])
+        u["acesso_expira_em"] = expira_em.isoformat()
+        msg = f"{plano['nome']} liberado para \"{chave}\" até {expira_em.strftime('%d/%m/%Y %H:%M')}."
+
+    u.pop("plano_solicitado", None)
+    u.pop("plano_solicitado_em", None)
+    salvar_usuarios(users)
+    return True, msg
+
+
+def admin_rejeitar_plano(username: str) -> tuple[bool, str]:
+    """Admin descarta a solicitação pendente sem liberar nada."""
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+    u.pop("plano_solicitado", None)
+    u.pop("plano_solicitado_em", None)
+    salvar_usuarios(users)
+    return True, "Solicitação removida."
+
+
+def usuario_consumir_credito_avulso_se_necessario(username: str):
+    """Chamada após um /pipeline bem-sucedido. Se o acesso do usuário veio
+    só do crédito avulso (não tem plano mensal ativo no momento), consome
+    1 crédito — depois disso a importação trava de novo até liberar outra."""
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return
+
+    tem_acesso_mensal = False
+    expira_raw = u.get("acesso_expira_em")
+    if expira_raw:
+        try:
+            tem_acesso_mensal = datetime.now() < datetime.fromisoformat(expira_raw)
+        except ValueError:
+            pass
+    if tem_acesso_mensal:
+        return   # tem plano mensal ativo, não mexe no crédito avulso
+
+    creditos = int(u.get("avulsa_creditos", 0) or 0)
+    if creditos > 0:
+        u["avulsa_creditos"] = creditos - 1
+        salvar_usuarios(users)
+        print(f"  [ASSINATURA] Crédito avulso consumido por \"{chave}\" (restam {creditos - 1}).")
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -834,6 +957,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             tem_acesso = bool(sess.get('is_admin')) or usuario_tem_acesso_ativo(sess['usuario'])
             self.send_json({'ok': True, 'tem_acesso': tem_acesso, 'is_admin': bool(sess.get('is_admin'))})
 
+        # /planos — lista os planos de assinatura disponíveis (fonte única: PLANOS)
+        elif self.path == '/planos':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            planos = [{'id': pid, **dados} for pid, dados in PLANOS.items()]
+            self.send_json({'ok': True, 'planos': planos})
+
+        # /assinatura/status — situação de assinatura do usuário logado
+        # (créditos avulsos, acesso mensal e solicitação pendente, se houver)
+        elif self.path == '/assinatura/status':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            users = carregar_usuarios()
+            _, u = _buscar_usuario(users, sess['usuario'])
+            if u is None:
+                self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'}, 404)
+                return
+            plano_solicitado = u.get('plano_solicitado')
+            self.send_json({
+                'ok': True,
+                'acesso_expira_em':    u.get('acesso_expira_em'),
+                'avulsa_creditos':     int(u.get('avulsa_creditos', 0) or 0),
+                'plano_solicitado':    plano_solicitado,
+                'plano_solicitado_em': u.get('plano_solicitado_em'),
+                'plano_solicitado_nome': PLANOS.get(plano_solicitado, {}).get('nome'),
+            })
+
         elif self.path == '/historico':
             sess = self._sessao_ou_401()
             if sess is None:
@@ -986,6 +1138,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': True})
             return
 
+        # /assinatura/solicitar — usuário pede um plano (não exige acesso ativo,
+        # é justamente pra quem não tem acesso pedir um novo)
+        if self.path == '/assinatura/solicitar':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = usuario_solicitar_plano(sess['usuario'], data.get('plano', ''))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
         # /admin/usuarios/criar — cria usuário direto, sem confirmação por email (só admin)
         if self.path == '/admin/usuarios/criar':
             sess = self._sessao_admin_ou_403()
@@ -1048,6 +1216,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'JSON inválido.'})
                 return
             ok, msg = admin_revogar_acesso(data.get('usuario', ''))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /admin/usuarios/confirmar-plano — credita o plano que o usuário solicitou
+        # (avulso = vira crédito de uso único; mensal = vira N dias de acesso) (só admin)
+        if self.path == '/admin/usuarios/confirmar-plano':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_confirmar_plano(data.get('usuario', ''))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /admin/usuarios/rejeitar-plano — descarta a solicitação de plano pendente (só admin)
+        if self.path == '/admin/usuarios/rejeitar-plano':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_rejeitar_plano(data.get('usuario', ''))
             self.send_json({'ok': ok, 'msg': msg})
             return
 
@@ -1146,6 +1345,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 sess['dados'] = (rows, headers)
                 nome_arq = Path(ARQ_PROCESSADO).name
                 adicionar_ao_historico(nome_arq, rows, headers, sess['user_id'])
+                if not sess.get('is_admin'):
+                    usuario_consumir_credito_avulso_se_necessario(sess['usuario'])
                 print(f"  [PIPELINE] ✅ {len(rows)} endereços carregados")
                 self.send_json({'ok': True, 'total': len(rows)})
 
