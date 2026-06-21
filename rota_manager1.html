@@ -2739,10 +2739,15 @@ if (_serverOnline) await checarAcesso();
 
 const el = document.getElementById('server-status');
 if (el) {
-el.innerHTML = _serverOnline
-? '✅ Servidor conectado — importe a <b>rota.xlsx</b> para iniciar'
-: '⚠️ Rode <b>servidor.py</b> na mesma pasta antes de usar';
-el.style.color = _serverOnline ? 'var(--green)' : 'var(--danger)';
+  if (isAdminUser()) {
+    el.style.display = '';
+    el.innerHTML = _serverOnline
+    ? '✅ Servidor conectado — importe a <b>rota.xlsx</b> para iniciar'
+    : '⚠️ Rode <b>servidor.py</b> na mesma pasta antes de usar';
+    el.style.color = _serverOnline ? 'var(--green)' : 'var(--danger)';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
   // Mostra botão histórico assim que servidor conectar
