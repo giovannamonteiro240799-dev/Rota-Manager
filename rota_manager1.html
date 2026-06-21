@@ -1173,8 +1173,8 @@ transition: .15s;
 <span id="count-badge" style="font-size:12px;color:var(--muted)"></span>
 </div>
 
-<!-- Drop zone inicial -->
-<div id="drop-zone" onclick="document.getElementById('file-input').click()">
+<!-- Drop zone inicial (começa oculta — JS decide qual exibir após checar acesso, evitando flash) -->
+<div id="drop-zone" onclick="document.getElementById('file-input').click()" style="display:none">
 <div class="drop-icon">📋</div>
 <div class="drop-title">Importe sua planilha de rotas</div>
 <div class="drop-sub">Arraste o arquivo <b>rota.xlsx</b> ou clique para selecionar</div>
@@ -3440,6 +3440,7 @@ document.getElementById('login-screen').classList.add('hidden');
 document.getElementById('header-user').style.display = 'flex';
 document.getElementById('header-username').textContent = user;
 document.getElementById('btn-admin').style.display = isAdminUser() ? '' : 'none';
+if (!_allRows.length) checarServidor();   // já dispara a checagem de acesso sem esperar o polling
 }
 
 // ── Sair ──────────────────────────────────────────────────────────────
