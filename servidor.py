@@ -826,6 +826,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': True, 'arquivo': ARQ_PROCESSADO,
                                 'rows': rows, 'headers': headers})
 
+        # /auth/status — diz se a sessão atual tem acesso ativo à importação de rotas
+        elif self.path == '/auth/status':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            tem_acesso = bool(sess.get('is_admin')) or usuario_tem_acesso_ativo(sess['usuario'])
+            self.send_json({'ok': True, 'tem_acesso': tem_acesso, 'is_admin': bool(sess.get('is_admin'))})
+
         elif self.path == '/historico':
             sess = self._sessao_ou_401()
             if sess is None:

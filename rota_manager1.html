@@ -325,7 +325,7 @@ cursor: pointer;
 }
 
 /* ── Drop zone ── */
-#drop-zone {
+#drop-zone, #drop-zone-sem-acesso {
 flex: 1;
 display: flex;
 flex-direction: column;
@@ -335,6 +335,7 @@ gap: 16px;
 padding: 40px;
 cursor: pointer;
 }
+#drop-zone-sem-acesso { cursor: default; }
 #drop-zone.drag-over { background: rgba(59, 130, 246, .07); }
 .drop-icon { font-size: 56px; opacity: .4; }
 .drop-title {
@@ -1185,6 +1186,16 @@ Escolher arquivo .xlsx
 </button>
 </div>
 
+<!-- Drop zone alternativa: acesso/assinatura vencida (sem clique, sem botão de upload) -->
+<div id="drop-zone-sem-acesso" style="display:none">
+<div class="drop-icon">🔒</div>
+<div class="drop-title" style="color:var(--danger)">Assinatura vencida</div>
+<div class="drop-sub">Nenhuma rota ativa</div>
+<div style="font-size:13px;margin-top:6px;color:var(--muted)">
+Fale com o administrador para renovar seu acesso.
+</div>
+</div>
+
 <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(event)">
 
 <!-- Loading -->
@@ -1520,6 +1531,7 @@ processarComServidor(file);
 function showLoading(msg) {
 document.getElementById('loading-msg').textContent = msg;
 document.getElementById('drop-zone').style.display = 'none';
+document.getElementById('drop-zone-sem-acesso').style.display = 'none';
 document.getElementById('loading').classList.add('show');
 document.getElementById('table-section').classList.remove('show');
 document.getElementById('stats-bar').classList.remove('show');
@@ -1555,7 +1567,7 @@ document.getElementById('toolbar').style.display = 'flex';
 }, 50);
 } catch(err) {
 hideLoading();
-document.getElementById('drop-zone').style.display = 'flex';
+aplicarVisibilidadeDropZone();
 alert('Erro ao processar arquivo: ' + err.message);
 }
 }, 80);
@@ -2580,12 +2592,35 @@ return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'
 // ══════════════════════════════════════════════════════════
 const SERVER = '';
 let _serverOnline = false;
+let _temAcesso = true;   // assume acesso liberado até o servidor dizer o contrário
+
+function aplicarVisibilidadeDropZone() {
+  // Só decide a UI quando já existe rota carregada nenhuma e o drop-zone está em jogo.
+  // mostrarRotaNoApp()/processarComServidor() escondem ambos os blocos quando há tabela.
+  const semAcesso = _serverOnline && !_temAcesso;
+  document.getElementById('drop-zone').style.display          = semAcesso ? 'none' : 'flex';
+  document.getElementById('drop-zone-sem-acesso').style.display = semAcesso ? 'flex' : 'none';
+}
+
+async function checarAcesso() {
+  const token = getToken();
+  if (!token) { _temAcesso = true; return; }   // sem sessão ainda — nada a checar
+  try {
+    const r = await fetch(SERVER + '/auth/status', { headers: authHeaders(), signal: AbortSignal.timeout(2500) });
+    const d = await r.json();
+    _temAcesso = d.ok ? !!d.tem_acesso : true;   // erro inesperado -> não bloqueia a UI
+  } catch (e) {
+    _temAcesso = true;
+  }
+}
 
 async function checarServidor() {
 try {
 const r = await fetch(SERVER + '/ping', { signal: AbortSignal.timeout(900) });
 _serverOnline = r.ok;
 } catch(e) { _serverOnline = false; }
+
+if (_serverOnline) await checarAcesso();
 
 const el = document.getElementById('server-status');
 if (el) {
@@ -2597,13 +2632,17 @@ el.style.color = _serverOnline ? 'var(--green)' : 'var(--danger)';
 
   // Mostra botão histórico assim que servidor conectar
   if (_serverOnline) document.getElementById('btn-hist').style.display = '';
+
+  // Só troca a tela se a tabela de resultados não estiver visível
+  if (!_allRows.length) aplicarVisibilidadeDropZone();
 }
 checarServidor();
 
 let _restaurouUmaVez = false;
 async function checarServidorInit() {
   await checarServidor();
-  // Ao conectar pela primeira vez, tenta restaurar última rota
+  // Ao conectar pela primeira vez, tenta restaurar última rota (independe de acesso —
+  // ver histórico já carregado continua liberado mesmo com assinatura vencida)
   if (_serverOnline && !_restaurouUmaVez && !_allRows.length) {
     _restaurouUmaVez = true;
     await tentarRestaurarUltimaRota();
@@ -2636,11 +2675,23 @@ try {
 const fd = new FormData();
 fd.append('arquivo', file, 'rota.xlsx');
 const up = await fetch(SERVER + '/upload', { method: 'POST', body: fd, headers: authHeaders() });
+if (up.status === 403) {
+  _temAcesso = false;
+  hideLoading();
+  aplicarVisibilidadeDropZone();
+  return;
+}
 if (!up.ok) throw new Error('Falha no upload');
 
 // 2) Roda tratamento_dados.py
 document.getElementById('loading-msg').textContent = 'Rodando tratamento_dados.py...';
 const pipe = await fetch(SERVER + '/pipeline', { method: 'POST', headers: authHeaders() });
+if (pipe.status === 403) {
+  _temAcesso = false;
+  hideLoading();
+  aplicarVisibilidadeDropZone();
+  return;
+}
 const pd   = await pipe.json();
 if (!pd.ok) throw new Error(pd.erro || 'Erro no pipeline');
 
@@ -2677,7 +2728,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 
 } catch(err) {
 hideLoading();
-document.getElementById('drop-zone').style.display = 'flex';
+aplicarVisibilidadeDropZone();
 alert('❌ Erro: ' + err.message);
 }
 }
@@ -2791,7 +2842,7 @@ async function carregarDoHistorico(nome) {
     mostrarRotaNoApp(d.rows, d.headers, d.nome);
   } catch(err) {
     hideLoading();
-    document.getElementById('drop-zone').style.display = 'flex';
+    aplicarVisibilidadeDropZone();
     alert('❌ Erro ao carregar do histórico: ' + err.message);
   }
 }
@@ -3396,6 +3447,7 @@ function fazerLogout() {
 const token = getToken();
 if (token) fetch(SERVER + '/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }).catch(() => {});
 clearSession();
+_temAcesso = true;
 document.getElementById('login-screen').classList.remove('hidden');
 document.getElementById('header-user').style.display = 'none';
 document.getElementById('btn-admin').style.display = 'none';
