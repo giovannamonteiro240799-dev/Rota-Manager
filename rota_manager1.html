@@ -3044,27 +3044,25 @@ btn.disabled = true;
 btn.textContent = "⏳ Exportando...";
 
 try {
-// Localiza as colunas de lat, lon e coordenadas nos headers originais
-const hUpper = _headers.map(x => String(x || '').toUpperCase().trim());
-function findIdx(pats) {
-for (const pat of pats) {
-const i = hUpper.findIndex(h => new RegExp(pat, 'i').test(h));
-if (i >= 0) return i;
-}
-return null;
-}
-const iLat   = findIdx(['LATITUDE', 'LAT']);
-const iLon   = findIdx(['LONGITUDE', 'LON', 'LNG']);
-const iCoord = findIdx(['COORDENADAS', 'COORD']);
-
-// Monta a planilha: header original + cada raw_row com só lat/lon/coord substituídos
-const dataOut = [_headers.slice()];
+// Exporta só 3 colunas — formato pensado pra importar direto no Circuit:
+// LATITUDE | LONGITUDE | SEQUENCE + ENDERECO_ORIGINAL (sequência(s) + endereço(s)
+// originais juntos numa só coluna; quando a parada foi agrupada manualmente,
+// junta todos os endereços do grupo separados por " | ").
+const dataOut = [["LATITUDE", "LONGITUDE", "SEQUENCE + ENDERECO_ORIGINAL"]];
 for (const row of _allRows) {
-const r = (row.raw_row || []).map(c => (c === null || c === undefined) ? '' : c);
-if (row.lat   && iLat   !== null) r[iLat]   = row.lat;
-if (row.lon   && iLon   !== null) r[iLon]   = row.lon;
-if (row.coord && iCoord !== null) r[iCoord] = row.coord;
-dataOut.push(r);
+const membros = Array.isArray(row.membros) && row.membros.length
+? row.membros
+: [{ stop: row.stop, original: row.endereco_original || row.address }];
+
+const seqEndereco = membros
+.map(m => {
+const orig = m.original || '';
+return m.stop ? `${m.stop} - ${orig}` : orig;
+})
+.filter(Boolean)
+.join(' | ');
+
+dataOut.push([row.lat || '', row.lon || '', seqEndereco]);
 }
 
 const ws = XLSX.utils.aoa_to_sheet(dataOut);
