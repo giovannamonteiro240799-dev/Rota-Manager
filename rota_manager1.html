@@ -3047,46 +3047,33 @@ try {
 // Exporta só 3 colunas — formato pensado pra importar direto no Circuit:
 // LATITUDE | LONGITUDE | SEQUENCE + ENDERECO_ORIGINAL
 //
-// Importante: só junta sequências (SEQ) numa mesma célula quando elas têm
-// o MESMO endereço original (mesma rua, Qd, lote, casa etc — texto idêntico).
-// Se a linha foi agrupada (group_size > 1) mas os membros têm endereços
-// originais diferentes (ex: Qd/lote/casa diferentes), cada endereço
-// distinto vira uma LINHA separada na planilha exportada, mesmo que
-// reaproveite a mesma lat/lon da linha (não há coordenada própria por
-// endereço quando o agrupamento foi feito pela mesma rua/prédio).
+// IMPORTANTE: 1 linha exportada = 1 parada/pino do app (mesmo total que
+// aparece em "endereços" na barra de estatísticas). Antes, quando um
+// grupo tinha membros com texto original ligeiramente diferente (ex:
+// apartamentos distintos no mesmo prédio), cada um virava uma linha
+// separada na planilha — o que inflava a contagem de paradas. Agora
+// todas as SEQs do grupo são somadas numa única célula, usando o
+// endereço já padronizado/reformado (o mesmo exibido como título do
+// pino na tela), preservando o agrupamento feito no app.
 const dataOut = [["LATITUDE", "LONGITUDE", "SEQUENCE + ENDERECO_ORIGINAL"]];
 for (const row of _allRows) {
 const membros = Array.isArray(row.membros) && row.membros.length
 ? row.membros
 : [{ stop: row.stop, original: row.endereco_original || row.address }];
 
-// Agrupa os membros desta linha por endereço original idêntico
-const porEndereco = new Map();   // endereco original (trim) -> [stops]
-for (const m of membros) {
-const orig = String(m.original || '').trim();
-if (!orig) continue;
-if (!porEndereco.has(orig)) porEndereco.set(orig, []);
-porEndereco.get(orig).push(m.stop);
-}
-
-for (const [orig, stops] of porEndereco) {
-porEndereco.set(orig, stops.slice().sort((a, b) => {
+const stops = membros
+.map(m => m.stop)
+.filter(s => s !== '' && s != null)
+.sort((a, b) => {
 const na = parseInt(a, 10), nb = parseInt(b, 10);
 if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
 return String(a).localeCompare(String(b), undefined, { numeric: true });
-}));
-}
-const gruposOrdenados = Array.from(porEndereco.entries()).sort((g1, g2) => {
-const minA = parseInt(g1[1][0], 10), minB = parseInt(g2[1][0], 10);
-if (Number.isFinite(minA) && Number.isFinite(minB) && minA !== minB) return minA - minB;
-return String(g1[1][0]).localeCompare(String(g2[1][0]), undefined, { numeric: true });
 });
 
-for (const [orig, stopsOrdenados] of gruposOrdenados) {
-const seqStr = stopsOrdenados.filter(s => s !== '' && s != null).join(', ');
-const celula = seqStr ? `${seqStr} - ${orig}` : orig;
+const seqStr = stops.join(', ');
+const endReformado = row.group_label || standardize(row.address) || row.address || '';
+const celula = seqStr ? `${seqStr} - ${endReformado}` : endReformado;
 dataOut.push([row.lat || '', row.lon || '', celula]);
-}
 }
 
 const ws = XLSX.utils.aoa_to_sheet(dataOut);
