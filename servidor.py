@@ -38,6 +38,12 @@ ARQ_PROCESSADO = "rota_processada_final.xlsx"
 ARQ_VALIDADO   = "rota_validada_here.xlsx"
 TRATAMENTO_PY  = "tratamento_dados.py"
 
+# ── Chave HERE Maps (geocoding do passo 3) ───────────────────────────────
+# Lida da variável de ambiente HERE_API_KEY (configure no Railway).
+# Fallback: chave de desenvolvimento hardcoded (mesma do config.py/HTML).
+HERE_API_KEY  = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M")
+HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
+
 # ── Envio de email (verificação de cadastro) — via API HTTPS do Brevo ────
 # SMTP é bloqueado no plano atual do Railway, por isso usamos a API REST
 # (HTTPS, mesmo mecanismo de uma chamada fetch normal — não é bloqueada).
@@ -1711,9 +1717,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     arq_validado.unlink()
 
                 print(f"  [PIPELINE] Rodando passo 3 (validação HERE)...")
+                env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY, "HERE_CIDADE_UF": HERE_CIDADE_UF}
                 result3 = subprocess.run(
                     [sys.executable, TRATAMENTO_PY, "--passo", "3"],
-                    capture_output=True, text=True, timeout=600
+                    capture_output=True, text=True, timeout=600,
+                    env=env_here
                 )
                 if result3.returncode != 0:
                     # Passo 3 falhou (ex: HERE_API_KEY ausente) — continua sem validação
