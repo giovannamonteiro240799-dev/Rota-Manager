@@ -1694,43 +1694,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 'erro': f'{TRATAMENTO_PY} não encontrado na pasta.'})
                 return
 
-            print(f"\n  [PIPELINE] Rodando {TRATAMENTO_PY} (passos 1 e 2)...")
+            print(f"\n  [PIPELINE] Rodando {TRATAMENTO_PY} (passos 1, 2 e 3)...")
             try:
-                # ── Passo 1 + 2: agrupa e consolida endereços ──────────────
+                # Roda os 3 passos juntos (padrão do script).
+                # HERE_API_KEY é injetada no ambiente do subprocess para que o
+                # passo 3 funcione no Railway (onde não existe config.py local).
+                env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY, "HERE_CIDADE_UF": HERE_CIDADE_UF}
                 result = subprocess.run(
-                    [sys.executable, TRATAMENTO_PY, "--passo", "1,2"],
-                    capture_output=True, text=True, timeout=120
+                    [sys.executable, TRATAMENTO_PY],
+                    capture_output=True, text=True, timeout=600,
+                    env=env_here
                 )
                 if result.returncode != 0:
                     erro = result.stderr or result.stdout or 'Erro desconhecido'
                     print(f"  [PIPELINE] ❌ {erro}")
                     self.send_json({'ok': False, 'erro': erro})
                     return
-                print(f"  [PIPELINE] ✅ Passos 1+2 concluídos")
+
+                print(f"  [PIPELINE] ✅ Pipeline concluído")
                 if result.stdout:
                     print(result.stdout)
-
-                # ── Passo 3: validação HERE (coordenadas) ───────────────────
-                # Remove arquivo validado anterior para não misturar resultado novo
-                arq_validado = Path(ARQ_VALIDADO)
-                if arq_validado.exists():
-                    arq_validado.unlink()
-
-                print(f"  [PIPELINE] Rodando passo 3 (validação HERE)...")
-                env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY, "HERE_CIDADE_UF": HERE_CIDADE_UF}
-                result3 = subprocess.run(
-                    [sys.executable, TRATAMENTO_PY, "--passo", "3"],
-                    capture_output=True, text=True, timeout=600,
-                    env=env_here
-                )
-                if result3.returncode != 0:
-                    # Passo 3 falhou (ex: HERE_API_KEY ausente) — continua sem validação
-                    print(f"  [PIPELINE] ⚠️ Passo 3 falhou — usando rota sem validação HERE")
-                    print(result3.stderr or result3.stdout or "")
-                else:
-                    print(f"  [PIPELINE] ✅ Passo 3 (HERE) concluído")
-                    if result3.stdout:
-                        print(result3.stdout)
 
                 rows, headers = ler_processado()
                 sess['dados'] = (rows, headers)
