@@ -214,6 +214,76 @@ header .badge b { color: var(--accent2); }
     #admin-panel { width: 100vw; }
   }
 
+  /* ── Modal de opções de exportação ── */
+  #export-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 600;
+    align-items: center;
+    justify-content: center;
+  }
+  #export-overlay.show { display: flex; }
+  #export-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    width: 560px;
+    max-width: 92vw;
+    box-shadow: 0 12px 48px rgba(0,0,0,.5);
+    animation: slideIn .18s ease;
+    overflow: hidden;
+  }
+  #export-modal-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #export-modal-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #export-modal-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #export-modal-header .close-btn:hover { color: var(--text); }
+  #export-modal-body {
+    display: flex;
+    gap: 12px;
+    padding: 18px;
+  }
+  @media (max-width: 640px) {
+    #export-modal-body { flex-direction: column; }
+  }
+  .export-option {
+    flex: 1;
+    text-align: left;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    color: var(--text);
+    transition: border-color .15s, transform .1s;
+  }
+  .export-option:hover { border-color: var(--accent2); transform: translateY(-1px); }
+  .export-option .opt-icon { font-size: 22px; margin-bottom: 8px; display: block; }
+  .export-option .opt-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .export-option .opt-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .export-option .opt-tag {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: rgba(59,130,246,.15);
+    color: var(--accent2);
+  }
+  .export-option.detailed .opt-tag { background: rgba(245,158,11,.15); color: var(--accent); }
+
   /* ── Painel Assinatura (mesmo padrão visual do histórico/admin) ── */
   #assinatura-overlay {
     display: none;
@@ -1254,6 +1324,31 @@ transition: .15s;
   </div>
 </div>
 
+<!-- ══ MODAL OPÇÕES DE EXPORTAÇÃO ══ -->
+<div id="export-overlay" onclick="fecharExportModal(event)">
+  <div id="export-modal">
+    <div id="export-modal-header">
+      <span>⬇️</span>
+      <span class="title">Exportar planilha</span>
+      <button class="close-btn" onclick="fecharExportModal()">✕</button>
+    </div>
+    <div id="export-modal-body">
+      <button type="button" class="export-option clean" onclick="exportarXlsx('clean')">
+        <span class="opt-icon">📄</span>
+        <span class="opt-title">Resumido</span>
+        <span class="opt-desc">Endereço padronizado (Destination Address). Mais limpo, ideal pra importar direto no Circuit.</span>
+        <span class="opt-tag">Coluna B</span>
+      </button>
+      <button type="button" class="export-option detailed" onclick="exportarXlsx('detailed')">
+        <span class="opt-icon">🧾</span>
+        <span class="opt-title">Detalhado</span>
+        <span class="opt-desc">Endereço original completo de cada item do grupo (ENDERECO_ORIGINAL). Mais informação por parada.</span>
+        <span class="opt-tag">Coluna J</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ PAINEL ASSINATURA ══ -->
 <div id="assinatura-overlay" onclick="fecharAssinatura(event)">
   <div id="assinatura-panel">
@@ -1293,7 +1388,7 @@ transition: .15s;
 <span style="color:var(--muted);font-size:13px">🔍</span>
 <input class="filter-input" id="filter-input" placeholder="Filtrar endereços..." oninput="filtrarTabela()">
 </div>
-<button class="btn btn-green" id="btn-export" onclick="exportarXlsx()" style="margin-left:auto">
+<button class="btn btn-green" id="btn-export" onclick="abrirExportModal()" style="margin-left:auto">
 ⬇️ Exportar xlsx
 </button>
 <span id="count-badge" style="font-size:12px;color:var(--muted)"></span>
@@ -3036,8 +3131,21 @@ async function tentarRestaurarUltimaRota() {
 
 
 
-function exportarXlsx() {
+function abrirExportModal() {
 if (!_allRows.length) { alert("Nenhum dado para exportar."); return; }
+document.getElementById('export-overlay').classList.add('show');
+}
+
+function fecharExportModal(e) {
+if (e && e.target !== document.getElementById('export-overlay')) return;
+document.getElementById('export-overlay').classList.remove('show');
+}
+
+function exportarXlsx(modo) {
+modo = modo === 'detailed' ? 'detailed' : 'clean';
+if (!_allRows.length) { alert("Nenhum dado para exportar."); return; }
+
+fecharExportModal();
 
 const btn = document.getElementById("btn-export");
 btn.disabled = true;
@@ -3045,16 +3153,16 @@ btn.textContent = "⏳ Exportando...";
 
 try {
 // Exporta só 3 colunas — formato pensado pra importar direto no Circuit:
-// LATITUDE | LONGITUDE | SEQUENCE + ENDERECO_ORIGINAL
+// LATITUDE | LONGITUDE | SEQUENCE + ENDERECO
 //
 // IMPORTANTE: 1 linha exportada = 1 parada/pino do app (mesmo total que
-// aparece em "endereços" na barra de estatísticas). Antes, quando um
-// grupo tinha membros com texto original ligeiramente diferente (ex:
-// apartamentos distintos no mesmo prédio), cada um virava uma linha
-// separada na planilha — o que inflava a contagem de paradas. Agora
-// todas as SEQs do grupo são somadas numa única célula, usando o
-// endereço já padronizado/reformado (o mesmo exibido como título do
-// pino na tela), preservando o agrupamento feito no app.
+// aparece em "endereços" na barra de estatísticas), em AMBOS os modos.
+// O que muda entre os modos é só qual texto de endereço vai na célula:
+//
+// - "clean"    -> endereço padronizado/reformado (Destination Address,
+//                 coluna B), o mesmo exibido como título do pino na tela.
+// - "detailed" -> todos os endereços originais distintos do grupo
+//                 (ENDERECO_ORIGINAL, coluna J), separados por " | ".
 const dataOut = [["LATITUDE", "LONGITUDE", "SEQUENCE + ENDERECO_ORIGINAL"]];
 for (const row of _allRows) {
 const membros = Array.isArray(row.membros) && row.membros.length
@@ -3071,15 +3179,27 @@ return String(a).localeCompare(String(b), undefined, { numeric: true });
 });
 
 const seqStr = stops.join(', ');
-const endReformado = row.group_label || standardize(row.address) || row.address || '';
-const celula = seqStr ? `${seqStr} - ${endReformado}` : endReformado;
+
+let endereco;
+if (modo === 'detailed') {
+const originaisVistos = [];
+for (const m of membros) {
+const orig = String(m.original || '').trim();
+if (orig && !originaisVistos.includes(orig)) originaisVistos.push(orig);
+}
+endereco = originaisVistos.join(' | ') || row.group_label || standardize(row.address) || row.address || '';
+} else {
+endereco = row.group_label || standardize(row.address) || row.address || '';
+}
+
+const celula = seqStr ? `${seqStr} - ${endereco}` : endereco;
 dataOut.push([row.lat || '', row.lon || '', celula]);
 }
 
 const ws = XLSX.utils.aoa_to_sheet(dataOut);
 const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, ws, "Rotas Consolidadas");
-XLSX.writeFile(wb, "rota_atualizada.xlsx");
+XLSX.writeFile(wb, modo === 'detailed' ? "rota_atualizada_detalhada.xlsx" : "rota_atualizada.xlsx");
 
 btn.textContent = "✔ Exportado!";
 btn.style.background = "#166534";
