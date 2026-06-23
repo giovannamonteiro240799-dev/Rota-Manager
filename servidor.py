@@ -493,26 +493,155 @@ def banco_coords_salvar(banco: dict):
     )
 
 
-def banco_coords_adicionar(endereco: str, lat: float, lon: float) -> tuple[bool, str]:
-    """Salva ou atualiza um endereço no banco. Retorna (ok, msg)."""
+#  Tolerância para agrupar votos como "a mesma localização": ~11 metros.
+#  1 grau de latitude/longitude na região de Goiânia ≈ 111km, então
+#  0.0001° ≈ 11m. Dois votos dentro dessa distância contam como o mesmo
+#  candidato de coordenada.
+_BANCO_TOLERANCIA_GRAUS = 0.0001
+
+#  Quantos votos concordantes para considerar uma coord "confiável".
+_BANCO_VOTOS_CONFIAVEL = 5
+
+
+def _banco_clusterizar_votos(votos: list) -> list:
+    """Agrupa votos por proximidade geográfica (~11m) e retorna uma lista
+    de clusters ordenada do mais votado para o menos votado:
+    [{"lat": .., "lon": .., "votos": [...]}, ...]
+    A coord de cada cluster é a média dos votos que caíram nele."""
+    clusters = []
+    for voto in votos:
+        destino = None
+        for c in clusters:
+            if (abs(c["lat"] - voto["lat"]) <= _BANCO_TOLERANCIA_GRAUS and
+                    abs(c["lon"] - voto["lon"]) <= _BANCO_TOLERANCIA_GRAUS):
+                destino = c
+                break
+        if destino is None:
+            clusters.append({"lat": voto["lat"], "lon": voto["lon"], "votos": [voto]})
+        else:
+            destino["votos"].append(voto)
+            # Recalcula o centro do cluster como média dos votos (mais estável
+            # que fixar a coord do primeiro voto que chegou).
+            destino["lat"] = sum(v["lat"] for v in destino["votos"]) / len(destino["votos"])
+            destino["lon"] = sum(v["lon"] for v in destino["votos"]) / len(destino["votos"])
+    clusters.sort(key=lambda c: len(c["votos"]), reverse=True)
+    return clusters
+
+
+def _banco_calcular_confianca(clusters: list) -> str:
+    """Classifica a confiança da coord vencedora:
+    - 'alta'     : cluster vencedor tem >= 5 votos E não está em disputa real
+    - 'disputa'  : existe mais de um cluster com votos e o 2º colocado tem
+                   pelo menos a metade dos votos do 1º (divergência relevante)
+    - 'media'    : 2 a 4 votos no cluster vencedor, sem disputa relevante
+    - 'baixa'    : 1 voto só
+    """
+    if not clusters:
+        return "baixa"
+    top = clusters[0]
+    n_top = len(top["votos"])
+    if len(clusters) > 1:
+        n_segundo = len(clusters[1]["votos"])
+        if n_segundo > 0 and n_segundo >= max(1, n_top / 2):
+            return "disputa"
+    if n_top >= _BANCO_VOTOS_CONFIAVEL:
+        return "alta"
+    if n_top >= 2:
+        return "media"
+    return "baixa"
+
+
+def banco_coords_votar(endereco: str, lat: float, lon: float, usuario: str) -> tuple[bool, str, dict]:
+    """Registra um voto de coordenada para o endereço, dado por `usuario`.
+
+    Regras:
+    - Cada usuário tem no máximo 1 voto ativo por endereço (votar de novo
+      atualiza a posição do próprio voto, não soma um voto extra).
+    - A coord ativa do endereço é sempre a do cluster (grupo de votos
+      próximos, tolerância ~11m) com MAIS votos. Em caso de empate, vence
+      o cluster mais recentemente atualizado.
+    - Isso significa que um voto isolado divergente (ex: brincadeira mudando
+      pra outro lugar) nunca sobrescreve uma coord já estabelecida por
+      maioria — só muda se reunir mais votos do que o grupo atual.
+
+    Retorna (ok, msg, info) onde info traz total_votos, votos_eleita,
+    confianca e mudou_coord, para o front mostrar feedback ao usuário."""
     chave = _normalizar_endereco(endereco)
     if not chave:
-        return False, "Endereço vazio."
+        return False, "Endereço vazio.", {}
     try:
         lat = float(lat)
         lon = float(lon)
     except (TypeError, ValueError):
-        return False, "Coordenadas inválidas."
+        return False, "Coordenadas inválidas.", {}
+
     banco = banco_coords_carregar()
-    banco[chave] = {
+    entrada = banco.get(chave) or {
         "endereco_original": endereco.strip(),
-        "lat": round(lat, 6),
-        "lon": round(lon, 6),
-        "salvo_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "votos": [],
     }
+    # Migra entradas antigas (formato sem 'votos') pra um voto único do admin.
+    if "votos" not in entrada:
+        entrada["votos"] = []
+        if entrada.get("lat") is not None and entrada.get("lon") is not None:
+            entrada["votos"].append({
+                "lat": entrada["lat"], "lon": entrada["lon"],
+                "usuario": "(legado)", "data": entrada.get("salvo_em", ""),
+            })
+
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    votos = entrada["votos"]
+
+    # Remove voto anterior do mesmo usuário (ele só pode ter 1 voto ativo aqui)
+    votos = [v for v in votos if v.get("usuario") != usuario]
+    votos.append({"lat": round(lat, 6), "lon": round(lon, 6), "usuario": usuario, "data": agora})
+    entrada["votos"] = votos
+
+    lat_antiga, lon_antiga = entrada.get("lat"), entrada.get("lon")
+
+    clusters = _banco_clusterizar_votos(votos)
+    vencedor = clusters[0]
+    confianca = _banco_calcular_confianca(clusters)
+
+    entrada["lat"] = round(vencedor["lat"], 6)
+    entrada["lon"] = round(vencedor["lon"], 6)
+    entrada["endereco_original"] = entrada.get("endereco_original") or endereco.strip()
+    entrada["salvo_em"] = agora
+    entrada["confianca"] = confianca
+    entrada["total_votos"] = len(votos)
+    entrada["votos_eleita"] = len(vencedor["votos"])
+
+    banco[chave] = entrada
     banco_coords_salvar(banco)
-    print(f"  [BANCO_COORDS] Salvo: {chave!r} → ({lat:.6f}, {lon:.6f})")
-    return True, "Coordenada salva no banco."
+
+    mudou_coord = (lat_antiga is None or lon_antiga is None or
+                   abs(lat_antiga - entrada["lat"]) > _BANCO_TOLERANCIA_GRAUS or
+                   abs(lon_antiga - entrada["lon"]) > _BANCO_TOLERANCIA_GRAUS)
+
+    info = {
+        "total_votos":  entrada["total_votos"],
+        "votos_eleita": entrada["votos_eleita"],
+        "confianca":    confianca,
+        "mudou_coord":  mudou_coord,
+        "lat":          entrada["lat"],
+        "lon":          entrada["lon"],
+    }
+
+    if entrada["votos_eleita"] == entrada["total_votos"]:
+        msg = f"Coordenada registrada. {entrada['total_votos']} pessoa(s) confirmaram este local."
+    elif mudou_coord:
+        msg = (f"Seu voto foi registrado, mas a localização confirmada por mais pessoas "
+               f"({entrada['votos_eleita']}/{entrada['total_votos']} votos) é outra — "
+               f"mantivemos a coordenada da maioria.")
+    else:
+        msg = (f"Coord registrada. {entrada['votos_eleita']} de {entrada['total_votos']} "
+               f"votos confirmam este local.")
+
+    print(f"  [BANCO_COORDS] Voto de {usuario!r} em {chave!r} → "
+          f"({lat:.6f}, {lon:.6f}) | vencedor: ({entrada['lat']:.6f}, {entrada['lon']:.6f}) "
+          f"| {entrada['votos_eleita']}/{entrada['total_votos']} votos | confiança={confianca}")
+
+    return True, msg, info
 
 
 def banco_coords_apagar(endereco: str) -> tuple[bool, str]:
@@ -527,7 +656,9 @@ def banco_coords_apagar(endereco: str) -> tuple[bool, str]:
 
 def banco_coords_aplicar(rows: list) -> list:
     """Aplica as coordenadas do banco nos rows cujo 'address' bater.
-    Marca rows alterados com do_banco=True."""
+    Marca rows alterados com do_banco=True e inclui os metadados de
+    votação (confiança, total de votos, votos da coord eleita) pro
+    front mostrar o badge correto."""
     banco = banco_coords_carregar()
     if not banco:
         return rows
@@ -537,10 +668,13 @@ def banco_coords_aplicar(rows: list) -> list:
             entrada = banco[chave]
             lat = str(entrada['lat'])
             lon = str(entrada['lon'])
-            row['lat']      = lat
-            row['lon']      = lon
-            row['coord']    = lat + ',' + lon
-            row['do_banco'] = True
+            row['lat']         = lat
+            row['lon']         = lon
+            row['coord']       = lat + ',' + lon
+            row['do_banco']    = True
+            row['banco_conf']  = entrada.get('confianca', 'baixa')
+            row['banco_votos'] = entrada.get('total_votos', 1)
+            row['banco_eleita'] = entrada.get('votos_eleita', 1)
     return rows
 
 
@@ -1711,7 +1845,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # /coords/salvar — salva/atualiza endereço no banco de coordenadas manuais (qualquer usuário logado)
+        # /coords/salvar — registra um voto de coordenada para o endereço
+        # (qualquer usuário logado). A coord ativa só muda se o novo voto
+        # formar maioria — ver banco_coords_votar().
         if self.path == '/coords/salvar':
             sess = self._sessao_ou_401()
             if sess is None:
@@ -1722,12 +1858,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 self.send_json({'ok': False, 'erro': 'JSON inválido.'})
                 return
-            ok, msg = banco_coords_adicionar(
+            ok, msg, info = banco_coords_votar(
                 data.get('endereco', ''),
                 data.get('lat', 0),
                 data.get('lon', 0),
+                sess.get('usuario', '(desconhecido)'),
             )
-            self.send_json({'ok': ok, 'msg': msg})
+            resposta = {'ok': ok, 'msg': msg}
+            if ok:
+                resposta.update(info)
+            else:
+                resposta['erro'] = msg
+            self.send_json(resposta)
             return
 
         # /coords/apagar — remove endereço do banco de coordenadas manuais (só admin)

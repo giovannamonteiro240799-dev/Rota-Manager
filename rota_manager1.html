@@ -1388,6 +1388,13 @@ transition: .15s;
 </div>
 
 
+<!-- ══ TOAST DE VOTAÇÃO ══ -->
+<div id="voto-toast">
+  <div id="voto-toast-msg"></div>
+  <div class="voto-conf" id="voto-toast-conf"></div>
+  <div class="voto-bar-wrap"><div class="voto-bar" id="voto-toast-bar"></div></div>
+</div>
+
 <!-- ══ PAINEL HISTÓRICO ══ -->
 <div id="hist-overlay" onclick="fecharHistorico(event)">
   <div id="hist-panel">
@@ -2021,9 +2028,18 @@ if (validacao.startsWith('✅')) {
   hereBadgeHtml  = `<span class="here-badge here-badge-parcial" title="${escHtml(validacao)}">${label}</span>`;
 }
 // Badge banco de coordenadas
-const bancoBadgeHtml = row.do_banco
-  ? '<span class="banco-badge" title="Coordenada do banco manual">📌 banco</span>'
-  : '';
+let bancoBadgeHtml = '';
+if (row.do_banco) {
+  const conf   = row.banco_conf || 'baixa';
+  const votos  = row.banco_votos || 1;
+  const eleita = row.banco_eleita || 1;
+  const icone  = conf === 'alta' ? '🟢' : conf === 'media' ? '🟡' : conf === 'disputa' ? '⚠️' : '🔵';
+  const label  = conf === 'alta' ? 'banco ✅' : conf === 'disputa' ? 'banco ⚠️' : 'banco';
+  const title  = conf === 'disputa'
+    ? 'Disputa de coordenadas — ' + votos + ' votos divergentes'
+    : eleita + '/' + votos + ' votos confirmam esta localização';
+  bancoBadgeHtml = '<span class="banco-badge conf-' + conf + '" title="' + title + '">' + icone + ' ' + label + '</span>';
+}
 
 tr.insertAdjacentHTML('beforeend', `
        <td class="td-stop">${escHtml(stopsStr || '—')}</td>
@@ -2256,7 +2272,8 @@ if (!e.data || e.data.type !== 'confirmar_coord') return;
 const { idx, lat, lng } = e.data;
 if (idx === undefined || idx < 0 || idx >= _allRows.length) return;
 const coord = parseFloat(lat).toFixed(6) + ',' + parseFloat(lng).toFixed(6);
-// Atualiza o row pelo idx e todos os membros do mesmo grupo
+// Atualiza o row pelo idx e todos os membros do mesmo grupo (otimista —
+// se o servidor responder que a maioria é outra coord, corrigimos abaixo)
 const targetRow = _allRows[idx];
 const gid = targetRow ? targetRow.group_id : null;
 const enderecoParaBanco = targetRow ? (targetRow.address || '') : '';
@@ -2267,24 +2284,75 @@ r.coord    = coord;
 r.lat      = parseFloat(lat).toFixed(6);
 r.lon      = parseFloat(lng).toFixed(6);
 r._editado = true;
-r.do_banco = true;  // ← marca badge visual
+r.do_banco = true;
 }
 }
 const q = document.getElementById('filter-input').value.trim();
 if (q) filtrarTabela(); else renderTable(_allRows);
 updateStats(_allRows);
-// Salva no banco de coordenadas do servidor
+// Registra o voto no banco de coordenadas (servidor decide a coord vencedora)
 if (enderecoParaBanco) {
   fetch(SERVER + '/coords/salvar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ endereco: enderecoParaBanco, lat: parseFloat(lat), lon: parseFloat(lng) })
   }).then(r => r.json()).then(r => {
-    if (r.ok) console.log('[BANCO] Coord salva:', enderecoParaBanco);
-    else console.warn('[BANCO] Falha ao salvar:', r.erro);
+    if (r.ok) {
+      // O servidor é a fonte da verdade pra coord eleita — se a maioria
+      // apontar pra outra posição, corrige o que mostramos na tabela.
+      const coordEleita = (r.lat != null && r.lon != null)
+        ? Number(r.lat).toFixed(6) + ',' + Number(r.lon).toFixed(6)
+        : coord;
+      for (let i = 0; i < _allRows.length; i++) {
+        const row = _allRows[i];
+        if (i === idx || (gid !== undefined && gid !== null && row.group_id === gid)) {
+          row.coord        = coordEleita;
+          row.lat          = r.lat != null ? Number(r.lat).toFixed(6) : row.lat;
+          row.lon          = r.lon != null ? Number(r.lon).toFixed(6) : row.lon;
+          row.banco_conf   = r.confianca;
+          row.banco_votos  = r.total_votos;
+          row.banco_eleita = r.votos_eleita;
+        }
+      }
+      if (q) filtrarTabela(); else renderTable(_allRows);
+      updateStats(_allRows);
+      mostrarVotoToast(r.msg, r.confianca, r.votos_eleita, r.total_votos);
+    } else {
+      console.warn('[BANCO] Falha ao salvar:', r.erro);
+    }
   }).catch(err => console.warn('[BANCO] Erro:', err));
 }
 });
+
+// Toast de feedback após votar numa coordenada
+function mostrarVotoToast(msg, confianca, votosEleita, totalVotos) {
+  const toast   = document.getElementById('voto-toast');
+  const msgEl   = document.getElementById('voto-toast-msg');
+  const confEl  = document.getElementById('voto-toast-conf');
+  const barEl   = document.getElementById('voto-toast-bar');
+  if (!toast) return;
+
+  const conf = confianca || 'baixa';
+  const rotulos = {
+    alta:    '🟢 Alta confiança',
+    media:   '🟡 Confiança média',
+    baixa:   '🔵 Confiança baixa (1º voto)',
+    disputa: '⚠️ Disputa de localização',
+  };
+
+  msgEl.textContent  = msg || '';
+  confEl.textContent = rotulos[conf] || '';
+  confEl.className   = 'voto-conf';
+
+  const pct = totalVotos > 0 ? Math.round((votosEleita / totalVotos) * 100) : 100;
+  barEl.className = 'voto-bar conf-' + conf;
+  barEl.style.width = '0%';
+  requestAnimationFrame(() => { barEl.style.width = pct + '%'; });
+
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('show'), 5000);
+}
 
 function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
 const lat = (() => {
@@ -3322,10 +3390,28 @@ function renderBancoList() {
   itens.forEach(entry => {
     const div = document.createElement('div');
     div.className = 'banco-item';
+
+    const conf   = entry.confianca   || 'baixa';
+    const total  = entry.total_votos  || (Array.isArray(entry.votos) ? entry.votos.length : 1);
+    const eleita = entry.votos_eleita || total;
+    const pct    = total > 0 ? Math.round((eleita / total) * 100) : 100;
+    const rotulos = {
+      alta:    '🟢 Alta confiança',
+      media:   '🟡 Confiança média',
+      baixa:   '🔵 Baixa confiança',
+      disputa: '⚠️ Em disputa',
+    };
+    const confHtml =
+      '<div class="banco-item-conf banco-conf-' + conf + '">' +
+        '<span>' + (rotulos[conf] || conf) + ' · ' + eleita + '/' + total + ' votos</span>' +
+        '<span class="banco-votos-bar"><span class="banco-votos-fill conf-' + conf + '" style="width:' + pct + '%"></span></span>' +
+      '</div>';
+
     div.innerHTML =
       '<div class="banco-item-end">' + escHtml(entry.endereco_original || entry.chave) + '</div>' +
       '<div class="banco-item-coord">📍 ' + entry.lat + ', ' + entry.lon + '</div>' +
-      '<div class="banco-item-data">salvo em ' + escHtml(entry.salvo_em || '—') + '</div>' +
+      '<div class="banco-item-data">atualizado em ' + escHtml(entry.salvo_em || '—') + '</div>' +
+      confHtml +
       '<button class="banco-del" title="Remover do banco" onclick="apagarDoBanco(' + JSON.stringify(entry.chave) + ', this)">✕</button>';
     list.appendChild(div);
   });
