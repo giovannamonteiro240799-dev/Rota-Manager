@@ -653,10 +653,15 @@ thead th:first-child { width: 52px; text-align: center; }
 
 tbody tr {
 border-bottom: 1px solid rgba(30, 58, 95, .5);
-transition: background .1s;
+border-left: 4px solid transparent;
+transition: background .1s, border-color .1s;
 }
 tbody tr:hover { background: rgba(255,255,255,.03); }
-tbody tr.grouped { background: rgba(245, 158, 11, .04); }
+tbody tr.grouped {
+background: rgba(245, 158, 11, .06);
+border-left: 4px solid var(--accent);
+}
+tbody tr.grouped:hover { background: rgba(245, 158, 11, .09); }
 
 td {
 padding: 9px 14px;
@@ -999,10 +1004,16 @@ border-radius: 12px;
 margin: 10px 12px;
 padding: 12px 48px 12px 52px;
 box-shadow: 0 1px 8px rgba(0,0,0,.25);
+border-left: 4px solid var(--border);
 }
-tbody tr.grouped { border-color: rgba(245,158,11,.4); }
+tbody tr.grouped {
+border-color: rgba(245,158,11,.4);
+border-left: 4px solid var(--accent);
+background: rgba(245,158,11,.06);
+}
 tbody tr.tr-selecionada { border-color: var(--accent); }
 tbody tr:hover { background: var(--surface); }
+tbody tr.grouped:hover { background: rgba(245,158,11,.09); }
 
 /* Checkbox: ancorado no canto superior esquerdo do card */
 td.td-check {
@@ -1022,13 +1033,19 @@ width: auto;
 padding: 0;
 }
 
-/* Seq: rótulo inline, discreto, acima do endereço */
+/* Seq: rótulo inline, discreto, acima do endereço (destaque maior quando agrupado) */
 td.td-stop {
 width: auto;
 padding: 0 0 6px;
 font-size: 11px;
 }
 td.td-stop::before { content: 'SEQ '; color: var(--muted); font-weight: 700; letter-spacing: .04em; }
+tr.grouped td.td-stop {
+font-size: 14px;
+font-weight: 800;
+color: var(--accent2);
+}
+tr.grouped td.td-stop::before { content: 'ORDEM '; color: var(--accent2); }
 
 /* Endereço: ocupa a linha cheia */
 td.td-addr {
