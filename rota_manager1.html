@@ -3038,10 +3038,10 @@ if (el) {
   }
 }
 
-  // Mostra botão histórico e banco assim que servidor conectar
+  // Mostra botão histórico assim que servidor conectar; banco só para admin
   if (_serverOnline) {
     document.getElementById('btn-hist').style.display = '';
-    document.getElementById('btn-banco').style.display = '';
+    if (isAdminUser()) document.getElementById('btn-banco').style.display = '';
   }
 
   // Só troca a tela se a tabela de resultados não estiver visível
@@ -3195,7 +3195,7 @@ function mostrarRotaNoApp(rows, headers, nomeArquivo) {
   document.getElementById('drop-zone').style.display = 'none';
   document.getElementById('toolbar').style.display = 'flex';
   document.getElementById('btn-hist').style.display = '';
-  document.getElementById('btn-banco').style.display = '';
+  if (isAdminUser()) document.getElementById('btn-banco').style.display = '';
 
   _nomeAtual = nomeArquivo;
   renderHistoricoPanel();

@@ -1414,9 +1414,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 self.send_json({'ok': False, 'erro': 'Rota não encontrada no histórico.'}, 404)
 
-        # /coords/listar — lista todas as entradas do banco de coordenadas manuais
+        # /coords/listar — lista todas as entradas do banco de coordenadas manuais (só admin)
         elif self.path == '/coords/listar':
-            sess = self._sessao_ou_401()
+            sess = self._sessao_admin_ou_403()
             if sess is None:
                 return
             banco = banco_coords_carregar()
@@ -1711,9 +1711,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # /coords/salvar — salva/atualiza endereço no banco de coordenadas manuais
+        # /coords/salvar — salva/atualiza endereço no banco de coordenadas manuais (só admin)
         if self.path == '/coords/salvar':
-            sess = self._sessao_ou_401()
+            sess = self._sessao_admin_ou_403()
             if sess is None:
                 return
             length = int(self.headers.get('Content-Length', 0))
@@ -1730,9 +1730,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # /coords/apagar — remove endereço do banco de coordenadas manuais
+        # /coords/apagar — remove endereço do banco de coordenadas manuais (só admin)
         if self.path == '/coords/apagar':
-            sess = self._sessao_ou_401()
+            sess = self._sessao_admin_ou_403()
             if sess is None:
                 return
             length = int(self.headers.get('Content-Length', 0))
