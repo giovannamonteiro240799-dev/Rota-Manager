@@ -1711,9 +1711,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json({'ok': ok, 'msg': msg})
             return
 
-        # /coords/salvar — salva/atualiza endereço no banco de coordenadas manuais (só admin)
+        # /coords/salvar — salva/atualiza endereço no banco de coordenadas manuais (qualquer usuário logado)
         if self.path == '/coords/salvar':
-            sess = self._sessao_admin_ou_403()
+            sess = self._sessao_ou_401()
             if sess is None:
                 return
             length = int(self.headers.get('Content-Length', 0))
