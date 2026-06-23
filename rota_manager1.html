@@ -132,6 +132,41 @@ header .badge b { color: var(--accent2); }
   .badge-confianca.conf-disputa .bc-dot { background: #f87171; animation: pulso-disputa 1.6s ease-in-out infinite; }
   @keyframes pulso-disputa { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
+  /* ── "Você editou agora" — marcador extra, permanente enquanto a página
+     estiver aberta (só some se recarregar). Aparece JUNTO com o badge de
+     confiança, não substitui — é sobre "foi você, nesta sessão", não sobre
+     quantas pessoas confirmaram. Cor própria (magenta) pra não se confundir
+     com nenhum nível de confiança. ── */
+  .badge-voce-editou {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(217,70,239,.16);
+    color: #e879f9;
+    border: 1px solid rgba(217,70,239,.55);
+    vertical-align: middle;
+    cursor: default;
+    box-shadow: 0 0 0 0 rgba(217,70,239,.5);
+    animation: glow-editou 2.2s ease-in-out infinite;
+  }
+  @keyframes glow-editou {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(217,70,239,.35); }
+    50%      { box-shadow: 0 0 8px 1px rgba(217,70,239,.45); }
+  }
+
+  /* Anel/contorno extra na linha inteira, sobreposto à cor de confiança,
+     pra ficar óbvio à primeira vista qual linha foi tocada agora mesmo. */
+  tbody tr.voce-editou {
+    outline: 1px solid rgba(217,70,239,.5);
+    outline-offset: -1px;
+  }
+
   /* Linha inteira (tr) ganha a mesma cor do nível de confiança —
      faixa lateral + fundo sutil, consistente em desktop e mobile.
      Seletores .grouped.linha-confirmada.conf-* têm especificidade extra
@@ -2037,6 +2072,7 @@ if (row.do_banco) {
   const conf = row.banco_conf || 'baixa';
   tr.classList.add('linha-confirmada', 'conf-' + conf);
 }
+if (row._editado) tr.classList.add('voce-editou');
 if (_selecionados.has(row._cid)) tr.classList.add('tr-selecionada');
 
 const hasCoord   = !!row.coord;
@@ -2146,11 +2182,18 @@ if (row.do_banco) {
     `</span>`;
 }
 
+// Badge extra — marca que FOI VOCÊ quem confirmou/mudou essa coordenada
+// agora, nesta sessão. Some só se a página for recarregada (não é
+// persistido). Aparece junto com o badge de confiança, não no lugar dele.
+const editouAgoraBadgeHtml = row._editado
+  ? `<span class="badge-voce-editou" title="Você confirmou esta coordenada agora, nesta sessão.">✎ Você editou agora</span>`
+  : '';
+
 tr.insertAdjacentHTML('beforeend', `
        <td class="td-stop">${escHtml(stopsStr || '—')}</td>
        <td class="td-addr">
          <div class="td-addr-reformado">${escHtml(endReformado)}</div>
-         ${hereBadgeHtml}${confiancaBadgeHtml}
+         ${hereBadgeHtml}${confiancaBadgeHtml}${editouAgoraBadgeHtml}
          ${membrosHtml}
        </td>
        <td class="td-grupo">${grupoHtml}</td>
