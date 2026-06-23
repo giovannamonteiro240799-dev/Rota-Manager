@@ -1531,6 +1531,60 @@ transition: .15s;
 .login-logo { font-size: 22px; }
 .btn-login { padding: 11px; }
 }
+
+/* ── Toast de feedback de voto ── */
+#voto-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9000;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 12px 16px;
+  width: 280px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity .2s, transform .2s, visibility .2s;
+  pointer-events: none;
+}
+#voto-toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+#voto-toast-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.voto-conf {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.voto-bar-wrap {
+  height: 3px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.voto-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .6s ease;
+}
+.voto-bar.conf-baixa   { background: #60a5fa; }
+.voto-bar.conf-media   { background: #facc15; }
+.voto-bar.conf-alta    { background: #4ade80; }
+.voto-bar.conf-disputa { background: #f87171; }
+@media (max-width: 640px) {
+  #voto-toast { right: 12px; bottom: 80px; width: calc(100vw - 24px); }
+}
 </style>
 </head>
 <body>
