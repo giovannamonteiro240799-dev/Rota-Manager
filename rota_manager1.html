@@ -71,20 +71,89 @@ header .badge.show { display: block; }
 header .badge b { color: var(--accent2); }
 
   /* ── Toolbar ── */
-  /* ── Badge banco de coords ── */
-  .banco-badge {
-    display: inline-block;
-    font-size: 10px;
+  /* ════════════════════════════════════════════════════════════════
+     SISTEMA UNIFICADO DE CONFIANÇA — endereço confirmado por votação
+     Toda linha com coordenada vinda do banco (do_banco=true) usa a
+     MESMA cor em tudo: faixa lateral, fundo, badge e coordenada.
+     A cor/intensidade muda só conforme o nível de confiança.
+     ════════════════════════════════════════════════════════════════ */
+
+  .badge-confianca {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    font-size: 11px;
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: rgba(99,102,241,.18);
-    color: #818cf8;
-    border: 1px solid rgba(99,102,241,.35);
-    margin-left: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
     vertical-align: middle;
     cursor: default;
+    line-height: 1.4;
   }
+  .badge-confianca .bc-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* baixa (1 voto) — azul discreto, "primeira confirmação" */
+  .badge-confianca.conf-baixa {
+    background: rgba(96,165,250,.12);
+    color: #60a5fa;
+    border-color: rgba(96,165,250,.35);
+  }
+  .badge-confianca.conf-baixa .bc-dot { background: #60a5fa; }
+
+  /* média (2-4 votos) — dourado, "ganhando confiança" */
+  .badge-confianca.conf-media {
+    background: rgba(234,179,8,.13);
+    color: #facc15;
+    border-color: rgba(234,179,8,.4);
+  }
+  .badge-confianca.conf-media .bc-dot { background: #facc15; }
+
+  /* alta (5+ votos) — verde forte, "confirmado pela comunidade" */
+  .badge-confianca.conf-alta {
+    background: rgba(34,197,94,.15);
+    color: #4ade80;
+    border-color: rgba(34,197,94,.45);
+    font-weight: 800;
+  }
+  .badge-confianca.conf-alta .bc-dot { background: #4ade80; }
+
+  /* disputa — vermelho de alerta, "pessoas divergem sobre o local" */
+  .badge-confianca.conf-disputa {
+    background: rgba(239,68,68,.14);
+    color: #f87171;
+    border-color: rgba(239,68,68,.45);
+  }
+  .badge-confianca.conf-disputa .bc-dot { background: #f87171; animation: pulso-disputa 1.6s ease-in-out infinite; }
+  @keyframes pulso-disputa { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* Linha inteira (tr) ganha a mesma cor do nível de confiança —
+     faixa lateral + fundo sutil, consistente em desktop e mobile.
+     Seletores .grouped.linha-confirmada.conf-* têm especificidade extra
+     de propósito, pra garantir que "confirmado" sempre vença visualmente
+     sobre "agrupado" quando os dois estados coexistem, sem depender da
+     ordem das regras no arquivo (robusto mesmo dentro de media queries). */
+  tbody tr.linha-confirmada.conf-baixa,   tbody tr.grouped.linha-confirmada.conf-baixa   { border-left: 4px solid #60a5fa; background: rgba(96,165,250,.045); }
+  tbody tr.linha-confirmada.conf-media,   tbody tr.grouped.linha-confirmada.conf-media   { border-left: 4px solid #facc15; background: rgba(234,179,8,.05); }
+  tbody tr.linha-confirmada.conf-alta,    tbody tr.grouped.linha-confirmada.conf-alta    { border-left: 4px solid #4ade80; background: rgba(34,197,94,.06); }
+  tbody tr.linha-confirmada.conf-disputa, tbody tr.grouped.linha-confirmada.conf-disputa { border-left: 4px solid #f87171; background: rgba(239,68,68,.05); }
+  tbody tr.linha-confirmada.conf-baixa:hover,   tbody tr.grouped.linha-confirmada.conf-baixa:hover   { background: rgba(96,165,250,.08); }
+  tbody tr.linha-confirmada.conf-media:hover,   tbody tr.grouped.linha-confirmada.conf-media:hover   { background: rgba(234,179,8,.08); }
+  tbody tr.linha-confirmada.conf-alta:hover,    tbody tr.grouped.linha-confirmada.conf-alta:hover    { background: rgba(34,197,94,.09); }
+  tbody tr.linha-confirmada.conf-disputa:hover, tbody tr.grouped.linha-confirmada.conf-disputa:hover { background: rgba(239,68,68,.08); }
+
+  /* Coordenada na cor do nível de confiança, com check só quando alta */
+  .td-coord.conf-baixa   { color: #60a5fa; }
+  .td-coord.conf-media   { color: #facc15; }
+  .td-coord.conf-alta    { color: #4ade80; font-weight: 700; }
+  .td-coord.conf-alta::before    { content: '✔ '; }
+  .td-coord.conf-disputa { color: #f87171; }
+  .td-coord.conf-disputa::before { content: '⚠ '; }
 
   /* ── Painel Banco de Coordenadas ── */
   #banco-overlay {
@@ -716,38 +785,9 @@ color: var(--accent);
 border: 1px solid rgba(245,158,11,.35);
 }
 
-/* ── Endereço com coordenada editada/confirmada manualmente ── */
-tbody tr.linha-editada {
-border-left: 4px solid var(--green);
-background: rgba(34,197,94,.05);
-}
-tbody tr.linha-editada:hover { background: rgba(34,197,94,.08); }
-
-.td-addr.coord-editada .td-addr-reformado {
-color: var(--text);
-}
-.badge-editada {
-display: inline-flex;
-align-items: center;
-gap: 4px;
-margin-top: 4px;
-font-size: 10px;
-font-weight: 800;
-letter-spacing: .04em;
-text-transform: uppercase;
-padding: 2px 8px;
-border-radius: 999px;
-background: rgba(34,197,94,.15);
-color: var(--green);
-border: 1px solid rgba(34,197,94,.4);
-}
-.td-coord.coord-confirmada {
-color: var(--green);
-font-weight: 700;
-}
-.td-coord.coord-confirmada::before {
-content: '✔ ';
-}
+/* ── Endereço com coordenada confirmada via banco de votos: ver
+   sistema unificado .linha-confirmada / .badge-confianca no topo do
+   arquivo, que cobre faixa lateral + fundo + badge + coordenada juntos ── */
 .td-coord {
 font-family: var(--mono);
 font-size: 11px;
@@ -1028,15 +1068,21 @@ border-color: rgba(245,158,11,.4);
 border-left: 4px solid var(--accent);
 background: rgba(245,158,11,.06);
 }
-tbody tr.linha-editada {
-border-color: rgba(34,197,94,.4);
-border-left: 4px solid var(--green);
-background: rgba(34,197,94,.06);
-}
+/* Sistema de confiança tem prioridade sobre "agrupado" — repetido aqui
+   para vencer a cascata dentro do media query mobile, com seletor
+   .grouped.linha-confirmada de especificidade extra garantindo a
+   prioridade mesmo se a ordem das regras mudar no futuro. */
+tbody tr.linha-confirmada.conf-baixa,   tbody tr.grouped.linha-confirmada.conf-baixa   { border-left: 4px solid #60a5fa; background: rgba(96,165,250,.05); }
+tbody tr.linha-confirmada.conf-media,   tbody tr.grouped.linha-confirmada.conf-media   { border-left: 4px solid #facc15; background: rgba(234,179,8,.06); }
+tbody tr.linha-confirmada.conf-alta,    tbody tr.grouped.linha-confirmada.conf-alta    { border-left: 4px solid #4ade80; background: rgba(34,197,94,.07); }
+tbody tr.linha-confirmada.conf-disputa, tbody tr.grouped.linha-confirmada.conf-disputa { border-left: 4px solid #f87171; background: rgba(239,68,68,.06); }
 tbody tr.tr-selecionada { border-color: var(--accent); }
 tbody tr:hover { background: var(--surface); }
 tbody tr.grouped:hover { background: rgba(245,158,11,.09); }
-tbody tr.linha-editada:hover { background: rgba(34,197,94,.09); }
+tbody tr.linha-confirmada.conf-baixa:hover,   tbody tr.grouped.linha-confirmada.conf-baixa:hover   { background: rgba(96,165,250,.085); }
+tbody tr.linha-confirmada.conf-media:hover,   tbody tr.grouped.linha-confirmada.conf-media:hover   { background: rgba(234,179,8,.095); }
+tbody tr.linha-confirmada.conf-alta:hover,    tbody tr.grouped.linha-confirmada.conf-alta:hover    { background: rgba(34,197,94,.1); }
+tbody tr.linha-confirmada.conf-disputa:hover, tbody tr.grouped.linha-confirmada.conf-disputa:hover { background: rgba(239,68,68,.095); }
 
 /* Checkbox: ancorado no canto superior esquerdo do card */
 td.td-check {
@@ -1987,7 +2033,10 @@ tbody.innerHTML = '<tr><td colspan="6" class="empty-filter">Nenhum endereço enc
 for (const row of rows) {
 const tr = document.createElement('tr');
 if (row.group_size > 1) tr.classList.add('grouped');
-if (row._editado) tr.classList.add('linha-editada');
+if (row.do_banco) {
+  const conf = row.banco_conf || 'baixa';
+  tr.classList.add('linha-confirmada', 'conf-' + conf);
+}
 if (_selecionados.has(row._cid)) tr.classList.add('tr-selecionada');
 
 const hasCoord   = !!row.coord;
@@ -2068,34 +2117,44 @@ if (validacao.startsWith('✅')) {
   const label    = ruaHere ? `⚠️ ${escHtml(ruaHere)}` : '⚠️ Parcial';
   hereBadgeHtml  = `<span class="here-badge here-badge-parcial" title="${escHtml(validacao)}">${label}</span>`;
 }
-// Badge banco de coordenadas
-let bancoBadgeHtml = '';
+// Badge único de confiança — aparece sempre que a coord vem do banco de
+// votos (do_banco=true), com cor/texto conforme quantas pessoas confirmaram.
+let confiancaBadgeHtml = '';
 if (row.do_banco) {
-  const conf   = row.banco_conf || 'baixa';
-  const votos  = row.banco_votos || 1;
+  const conf   = row.banco_conf   || 'baixa';
+  const votos  = row.banco_votos  || 1;
   const eleita = row.banco_eleita || 1;
-  const icone  = conf === 'alta' ? '🟢' : conf === 'media' ? '🟡' : conf === 'disputa' ? '⚠️' : '🔵';
-  const label  = conf === 'alta' ? 'banco ✅' : conf === 'disputa' ? 'banco ⚠️' : 'banco';
-  const title  = conf === 'disputa'
-    ? 'Disputa de coordenadas — ' + votos + ' votos divergentes'
-    : eleita + '/' + votos + ' votos confirmam esta localização';
-  bancoBadgeHtml = '<span class="banco-badge conf-' + conf + '" title="' + title + '">' + icone + ' ' + label + '</span>';
-}
 
-// Badge de coordenada editada/confirmada manualmente no mapa
-const editadaBadgeHtml = row._editado
-  ? '<span class="badge-editada" title="Esta coordenada foi confirmada manualmente no mapa">✔ Coord confirmada</span>'
-  : '';
+  let texto, title;
+  if (conf === 'disputa') {
+    texto = 'Localização em disputa';
+    title = `${votos} pessoas divergem sobre este local — aguardando mais confirmações.`;
+  } else if (votos === 1) {
+    texto = 'Confirmado por 1 pessoa';
+    title = 'Primeira confirmação deste local. Mais confirmações aumentam a confiança.';
+  } else if (conf === 'alta') {
+    texto = `Confirmado por ${votos} pessoas`;
+    title = `${eleita} de ${votos} pessoas confirmam este local — alta confiança.`;
+  } else {
+    texto = `Confirmado por ${votos} pessoas`;
+    title = `${eleita} de ${votos} pessoas confirmam este local.`;
+  }
+
+  confiancaBadgeHtml =
+    `<span class="badge-confianca conf-${conf}" title="${escHtml(title)}">` +
+      `<span class="bc-dot"></span>${escHtml(texto)}` +
+    `</span>`;
+}
 
 tr.insertAdjacentHTML('beforeend', `
        <td class="td-stop">${escHtml(stopsStr || '—')}</td>
-       <td class="td-addr${row._editado ? ' coord-editada' : ''}">
+       <td class="td-addr">
          <div class="td-addr-reformado">${escHtml(endReformado)}</div>
-         ${hereBadgeHtml}${bancoBadgeHtml}${editadaBadgeHtml}
+         ${hereBadgeHtml}${confiancaBadgeHtml}
          ${membrosHtml}
        </td>
        <td class="td-grupo">${grupoHtml}</td>
-       <td class="td-coord ${hasCoord ? '' : 'no-coord'}${row._editado ? ' coord-confirmada' : ''}">${escHtml(coordText)}</td>
+       <td class="td-coord ${hasCoord ? '' : 'no-coord'}${row.do_banco ? ' conf-' + (row.banco_conf || 'baixa') : ''}">${escHtml(coordText)}</td>
      `);
 tbody.appendChild(tr);
 }
