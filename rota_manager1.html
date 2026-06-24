@@ -53,34 +53,17 @@ flex-direction: column;
 
 /* ── Header ── */
 header {
-background: var(--steel);
+background: var(--surface);
 border-bottom: 1px solid var(--border);
-padding: env(safe-area-inset-top) max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left));
-height: calc(58px + env(safe-area-inset-top));
+padding: env(safe-area-inset-top) max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
+height: calc(56px + env(safe-area-inset-top));
 display: flex;
 align-items: center;
-gap: 16px;
+gap: 12px;
 position: sticky;
 top: 0;
 z-index: 100;
-box-shadow: 0 2px 16px rgba(0,0,0,.6);
-}
-/* Faixa de alerta industrial (hazard stripes) na base do header */
-header::after {
-content: '';
-position: absolute;
-left: 0;
-right: 0;
-bottom: -4px;
-height: 4px;
-background-image: repeating-linear-gradient(
-  -45deg,
-  var(--accent) 0,
-  var(--accent) 12px,
-  #14171b 12px,
-  #14171b 24px
-);
-opacity: .9;
+box-shadow: 0 1px 0 var(--border);
 }
 header .logo {
 font-family: var(--display);
@@ -1062,14 +1045,13 @@ background: rgba(245, 158, 11, .10) !important;
 /* ── Botão flutuante: Agrupar selecionados ── */
 .fab-agrupar {
 position: fixed;
-left: 50%;
-bottom: calc(20px + env(safe-area-inset-bottom));
-transform: translateX(-50%) translateY(16px);
+right: max(24px, env(safe-area-inset-right));
+bottom: calc(24px + env(safe-area-inset-bottom));
 z-index: 400;
 display: flex;
 align-items: center;
 gap: 8px;
-padding: 13px 24px;
+padding: 13px 22px;
 border: none;
 border-radius: 999px;
 background: var(--accent);
@@ -1077,41 +1059,38 @@ color: #000;
 font-size: 14px;
 font-weight: 800;
 cursor: pointer;
-box-shadow: 0 6px 28px rgba(0,0,0,.6), 0 0 0 2px rgba(245,166,35,.25);
+box-shadow: 0 6px 24px rgba(0,0,0,.5);
 opacity: 0;
 visibility: hidden;
-white-space: nowrap;
+transform: translateY(16px);
 transition: opacity .18s, transform .18s, visibility .18s, filter .15s;
 }
 .fab-agrupar.show {
 opacity: 1;
 visibility: visible;
-transform: translateX(-50%) translateY(0);
+transform: translateY(0);
 }
 .fab-agrupar:hover { filter: brightness(1.1); }
-.fab-agrupar:active { filter: brightness(0.95); transform: translateX(-50%) translateY(1px); }
 .fab-agrupar.vazio {
 background: var(--surface2);
 color: var(--muted);
 border: 1px solid var(--border);
-box-shadow: 0 4px 16px rgba(0,0,0,.4);
 }
 .fab-count {
 display: inline-flex;
 align-items: center;
 justify-content: center;
-min-width: 22px;
-height: 22px;
-padding: 0 6px;
+min-width: 20px;
+height: 20px;
+padding: 0 5px;
 border-radius: 999px;
-background: rgba(0,0,0,.3);
+background: rgba(0,0,0,.25);
 font-size: 12px;
-font-weight: 900;
 }
 .fab-agrupar.vazio .fab-count { background: rgba(255,255,255,.08); }
 
 @media (max-width: 640px) {
-.fab-agrupar { padding: 12px 20px; font-size: 13px; }
+.fab-agrupar { right: max(16px, env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); padding: 12px 18px; font-size: 13px; }
 }
 
 /* Botão de mapa */
@@ -1571,29 +1550,162 @@ text-align: center;
 .login-success.show { display: block; }
 
 /* Usuário logado no header */
+/* ── Header user / profile dropdown ── */
 .header-user {
 display: flex;
 align-items: center;
+gap: 0;
+position: relative;
+}
+.profile-trigger {
+display: flex;
+align-items: center;
 gap: 8px;
-font-size: 12px;
+background: none;
+border: none;
+cursor: pointer;
+padding: 6px 8px;
+border-radius: 8px;
+transition: background .15s;
+color: var(--text);
+}
+.profile-trigger:hover { background: rgba(255,255,255,.07); }
+.profile-avatar {
+width: 32px; height: 32px;
+border-radius: 50%;
+background: var(--accent);
+color: #000;
+font-size: 13px;
+font-weight: 800;
+display: flex; align-items: center; justify-content: center;
+flex-shrink: 0;
+font-family: var(--display);
+}
+.profile-chevron {
+color: var(--muted);
+transition: transform .2s;
+display: flex; align-items: center;
+}
+.profile-chevron svg { width: 14px; height: 14px; }
+.profile-trigger[aria-expanded="true"] .profile-chevron { transform: rotate(180deg); }
+
+/* dropdown */
+.profile-dropdown {
+position: absolute;
+top: calc(100% + 8px);
+right: 0;
+min-width: 260px;
+background: var(--surface);
+border: 1px solid var(--border);
+border-radius: 12px;
+box-shadow: 0 8px 32px rgba(0,0,0,.5);
+z-index: 500;
+overflow: hidden;
+opacity: 0;
+visibility: hidden;
+transform: translateY(-6px);
+transition: opacity .15s, transform .15s, visibility .15s;
+}
+.profile-dropdown.open {
+opacity: 1;
+visibility: visible;
+transform: translateY(0);
+}
+.profile-dd-header {
+padding: 16px;
+border-bottom: 1px solid var(--border);
+display: flex;
+align-items: center;
+gap: 12px;
+}
+.profile-dd-avatar {
+width: 42px; height: 42px;
+border-radius: 50%;
+background: var(--accent);
+color: #000;
+font-size: 17px;
+font-weight: 800;
+display: flex; align-items: center; justify-content: center;
+font-family: var(--display);
+flex-shrink: 0;
+}
+.profile-dd-name {
+font-size: 14px;
+font-weight: 700;
+color: var(--text);
+}
+.profile-dd-fields {
+padding: 12px 16px;
+display: flex;
+flex-direction: column;
+gap: 10px;
+border-bottom: 1px solid var(--border);
+}
+.profile-field {
+display: flex;
+flex-direction: column;
+gap: 2px;
+}
+.profile-field label {
+font-size: 10px;
+font-weight: 700;
+letter-spacing: .06em;
+text-transform: uppercase;
 color: var(--muted);
 }
-.header-user .user-name {
+.profile-field-value {
+font-size: 13px;
 color: var(--text);
-font-weight: 600;
 }
+.profile-field-input {
+background: var(--surface2);
+border: 1px solid var(--border);
+border-radius: 6px;
+color: var(--text);
+font-size: 13px;
+padding: 6px 10px;
+width: 100%;
+box-sizing: border-box;
+font-family: var(--font);
+transition: border-color .15s;
+}
+.profile-field-input:focus { outline: none; border-color: var(--accent2); }
+.profile-field-input.error { border-color: var(--danger); }
+.profile-field-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.profile-field-msg { font-size: 11px; margin-top: 3px; }
+.profile-field-msg.ok  { color: #4ade80; }
+.profile-field-msg.err { color: var(--danger); }
+.profile-dd-actions {
+padding: 10px 16px;
+display: flex;
+flex-direction: column;
+gap: 6px;
+}
+.btn-profile-save {
+background: var(--accent);
+color: #000;
+border: none;
+border-radius: 6px;
+padding: 8px 14px;
+font-size: 12px;
+font-weight: 800;
+cursor: pointer;
+transition: filter .15s;
+}
+.btn-profile-save:hover { filter: brightness(1.1); }
+.btn-profile-save:disabled { opacity: .5; cursor: default; }
 .btn-logout {
 background: none;
 border: 1px solid var(--border);
-border-radius: 3px;
+border-radius: 6px;
 color: var(--muted);
-font-size: 10px;
+font-size: 12px;
 font-weight: 700;
-letter-spacing: .05em;
-text-transform: uppercase;
-padding: 4px 10px;
+padding: 7px 14px;
 cursor: pointer;
 transition: .15s;
+width: 100%;
+text-align: center;
 }
 .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 
@@ -1724,9 +1836,17 @@ transition: .15s;
 <label>Confirmar senha</label>
 <div class="login-input-wrap">
 <span class="icon">🔑</span>
-<input class="login-input" id="cad-pass2" type="password" placeholder="Repita a senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')cadastrar()">
+<input class="login-input" id="cad-pass2" type="password" placeholder="Repita a senha" autocomplete="new-password" onkeydown="if(event.key==='Enter')document.getElementById('cad-tel').focus()">
 <button class="toggle-pass" onclick="toggleSenha('cad-pass2',this)" title="Mostrar/ocultar senha">👁</button>
 </div>
+</div>
+<div class="login-field">
+<label>Telefone <span style="color:var(--muted);font-size:11px;font-weight:400">(opcional)</span></label>
+<div class="login-input-wrap">
+<span class="icon">📱</span>
+<input class="login-input" id="cad-tel" type="tel" placeholder="62 9 91153473" autocomplete="tel" maxlength="16" oninput="formatarTelCadastro(this)" onkeydown="if(event.key==='Enter')cadastrar()">
+</div>
+<div style="font-size:11px;color:var(--muted);margin-top:4px">DDD + 9 + número · pode adicionar depois</div>
 </div>
 <button class="btn-login" id="btn-cadastrar" onclick="cadastrar()">Cadastrar</button>
 </div>
@@ -1929,8 +2049,44 @@ transition: .15s;
     🛠 <span class="label">Admin</span>
   </button>
 <div class="header-user" id="header-user" style="display:none">
-<span class="user-name" id="header-username"></span>
-<button class="btn-logout" onclick="fazerLogout()">Sair</button>
+  <button class="profile-trigger" id="profile-trigger" onclick="toggleProfileDropdown()" aria-expanded="false" aria-label="Menu do usuário">
+    <div class="profile-avatar" id="profile-avatar">?</div>
+    <div class="profile-chevron">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 6 8 10 12 6"/>
+      </svg>
+    </div>
+  </button>
+  <div class="profile-dropdown" id="profile-dropdown">
+    <div class="profile-dd-header">
+      <div class="profile-dd-avatar" id="profile-dd-avatar">?</div>
+      <div>
+        <div class="profile-dd-name" id="profile-dd-name">—</div>
+      </div>
+    </div>
+    <div class="profile-dd-fields">
+      <div class="profile-field">
+        <label>Usuário</label>
+        <div class="profile-field-value" id="profile-val-usuario">—</div>
+      </div>
+      <div class="profile-field">
+        <label>E-mail</label>
+        <div class="profile-field-value" id="profile-val-email">—</div>
+      </div>
+      <div class="profile-field">
+        <label>Telefone</label>
+        <input class="profile-field-input" id="profile-tel-input" type="tel"
+          placeholder="62 9 91153473" maxlength="16"
+          oninput="formatarTelPerfil(this)" onkeydown="telPerfilKeydown(event)">
+        <div class="profile-field-hint">DDD + 9 + número (ex: 62 9 91153473)</div>
+        <div class="profile-field-msg" id="profile-tel-msg"></div>
+      </div>
+    </div>
+    <div class="profile-dd-actions">
+      <button class="btn-profile-save" id="btn-profile-save" onclick="salvarPerfil()">Salvar telefone</button>
+      <button class="btn-logout" onclick="fazerLogout()">Sair da conta</button>
+    </div>
+  </div>
 </div>
 </header>
 
@@ -4643,6 +4799,102 @@ setBtnLoading('btn-entrar', false, 'Entrar');
 }
 }
 
+// ── Funções de telefone (formatação) ──────────────────────────────────
+function _apenasDigitos(v) { return v.replace(/\D/g, ''); }
+function _formatarTelBR(digits) {
+// Formato: XX X XXXXXXXX
+if (digits.length === 0) return '';
+let r = digits.slice(0, 11);
+if (r.length <= 2) return r;
+if (r.length <= 3) return r.slice(0,2) + ' ' + r.slice(2);
+if (r.length <= 11) return r.slice(0,2) + ' ' + r.slice(2,3) + ' ' + r.slice(3);
+return r;
+}
+function formatarTelCadastro(input) {
+const d = _apenasDigitos(input.value);
+input.value = _formatarTelBR(d);
+}
+function formatarTelPerfil(input) {
+const d = _apenasDigitos(input.value);
+input.value = _formatarTelBR(d);
+input.classList.remove('error');
+document.getElementById('profile-tel-msg').textContent = '';
+}
+function telPerfilKeydown(e) { if (e.key === 'Enter') salvarPerfil(); }
+
+// ── Profile dropdown ───────────────────────────────────────────────────
+function toggleProfileDropdown() {
+const dd = document.getElementById('profile-dropdown');
+const trigger = document.getElementById('profile-trigger');
+const isOpen = dd.classList.contains('open');
+if (isOpen) { fecharProfileDropdown(); }
+else {
+  dd.classList.add('open');
+  trigger.setAttribute('aria-expanded', 'true');
+}
+}
+function fecharProfileDropdown() {
+document.getElementById('profile-dropdown').classList.remove('open');
+document.getElementById('profile-trigger').setAttribute('aria-expanded', 'false');
+}
+// Fechar ao clicar fora
+document.addEventListener('click', function(e) {
+const hu = document.getElementById('header-user');
+if (hu && !hu.contains(e.target)) fecharProfileDropdown();
+});
+
+async function carregarPerfilUsuario() {
+try {
+const r = await fetch(SERVER + '/auth/perfil', { headers: authHeaders() });
+if (!r.ok) return;
+const d = await r.json();
+if (d.ok) {
+  document.getElementById('profile-val-email').textContent = d.email || '—';
+  const telInput = document.getElementById('profile-tel-input');
+  telInput.value = d.telefone ? _formatarTelBR(d.telefone) : '';
+}
+} catch(e) { /* silencioso */ }
+}
+
+async function salvarPerfil() {
+const telInput = document.getElementById('profile-tel-input');
+const msg = document.getElementById('profile-tel-msg');
+const btn = document.getElementById('btn-profile-save');
+const digits = _apenasDigitos(telInput.value);
+// Validação: vazio ok, ou 11 dígitos começando com DDD+9
+if (digits && !/^\d{2}9\d{8}$/.test(digits)) {
+  telInput.classList.add('error');
+  msg.textContent = 'Formato inválido. Ex: 62 9 91153473';
+  msg.className = 'profile-field-msg err';
+  return;
+}
+btn.disabled = true;
+btn.textContent = '⏳ Salvando...';
+try {
+const r = await fetch(SERVER + '/auth/perfil/atualizar', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...authHeaders() },
+  body: JSON.stringify({ telefone: digits })
+});
+const d = await r.json();
+if (d.ok) {
+  msg.textContent = '✓ Salvo!';
+  msg.className = 'profile-field-msg ok';
+  telInput.classList.remove('error');
+  setTimeout(() => { msg.textContent = ''; }, 2500);
+} else {
+  msg.textContent = d.erro || 'Erro ao salvar.';
+  msg.className = 'profile-field-msg err';
+}
+} catch(e) {
+  msg.textContent = 'Falha de conexão.';
+  msg.className = 'profile-field-msg err';
+} finally {
+  btn.disabled = false;
+  btn.textContent = 'Salvar telefone';
+}
+}
+
 // ── Cadastrar — Etapa 1: envia usuário+email+senha, recebe código por email ──
 let _pendingToken = null;
 let _pendingUsuario = null;
@@ -4652,6 +4904,8 @@ const usuario = document.getElementById('cad-user').value.trim();
 const email   = document.getElementById('cad-email').value.trim();
 const senha   = document.getElementById('cad-pass').value;
 const senha2  = document.getElementById('cad-pass2').value;
+const telRaw  = document.getElementById('cad-tel').value.trim();
+const telefone = _apenasDigitos(telRaw);
 
 if (!usuario)           { showError('Informe um nome de usuário.'); return; }
 if (usuario.length < 3) { showError('Usuário deve ter pelo menos 3 caracteres.'); return; }
@@ -4659,6 +4913,7 @@ if (!email || !email.includes('@')) { showError('Informe um email válido.'); re
 if (!senha)             { showError('Informe uma senha.'); return; }
 if (senha.length < 4)   { showError('Senha deve ter pelo menos 4 caracteres.'); return; }
 if (senha !== senha2)   { showError('As senhas não coincidem.'); return; }
+if (telefone && !/^\d{2}9\d{8}$/.test(telefone)) { showError('Telefone inválido. Use DDD + 9 + número (ex: 62 9 91153473).'); return; }
 
 setBtnLoading('btn-cadastrar', true, 'Cadastrar');
 clearMsgs();
@@ -4666,7 +4921,7 @@ try {
 const r = await fetch(SERVER + '/auth/cadastro', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ usuario, email, senha })
+body: JSON.stringify({ usuario, email, senha, telefone })
 });
 const d = await r.json();
 if (d.ok) {
@@ -4859,10 +5114,16 @@ setBtnLoading('btn-rec-redefinir', false, 'Redefinir senha');
 function entrarNoApp(user) {
 document.getElementById('login-screen').classList.add('hidden');
 document.getElementById('header-user').style.display = 'flex';
-document.getElementById('header-username').textContent = user;
+// Avatar: primeira letra do usuário em maiúsculo
+const inicial = (user || '?')[0].toUpperCase();
+document.getElementById('profile-avatar').textContent    = inicial;
+document.getElementById('profile-dd-avatar').textContent = inicial;
+document.getElementById('profile-dd-name').textContent   = user;
+document.getElementById('profile-val-usuario').textContent = user;
 document.getElementById('btn-admin').style.display = isAdminUser() ? '' : 'none';
-if (!_allRows.length) checarServidor();   // já dispara a checagem de acesso sem esperar o polling
+if (!_allRows.length) checarServidor();
 confirmarPagamentoSeRetornouDoCheckout();
+carregarPerfilUsuario();
 }
 
 // ── Sair ──────────────────────────────────────────────────────────────
@@ -4871,6 +5132,7 @@ const token = getToken();
 if (token) fetch(SERVER + '/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }).catch(() => {});
 clearSession();
 _temAcesso = true;
+fecharProfileDropdown();
 document.getElementById('login-screen').classList.remove('hidden');
 document.getElementById('header-user').style.display = 'none';
 document.getElementById('btn-admin').style.display = 'none';

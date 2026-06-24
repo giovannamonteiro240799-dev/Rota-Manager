@@ -248,13 +248,24 @@ def _limpar_cadastros_expirados():
         del _cadastros_pendentes[t]
 
 
-def iniciar_cadastro_pendente(username: str, email: str, senha: str) -> tuple[bool, str, str | None]:
+def _telefone_valido(tel: str) -> bool:
+    """Valida telefone BR: DDD + 9 + 8 dígitos = 11 dígitos. Ex: 62991153473"""
+    digits = re.sub(r'[\s\-().]+', '', tel or '')
+    return bool(re.match(r'^\d{2}9\d{8}$', digits))
+
+
+def _normalizar_telefone(tel: str) -> str:
+    return re.sub(r'[\s\-().]+', '', tel or '')
+
+
+def iniciar_cadastro_pendente(username: str, email: str, senha: str, telefone: str = '') -> tuple[bool, str, str | None]:
     """Valida dados, gera código, envia email, guarda cadastro pendente.
     Retorna (ok, mensagem, pending_token)."""
     _limpar_cadastros_expirados()
 
-    username = username.strip()
-    email    = email.strip().lower()
+    username  = username.strip()
+    email     = email.strip().lower()
+    telefone  = _normalizar_telefone(telefone) if telefone else ''
 
     if not username or len(username) < 3:
         return False, "Usuário deve ter pelo menos 3 caracteres.", None
@@ -262,6 +273,8 @@ def iniciar_cadastro_pendente(username: str, email: str, senha: str) -> tuple[bo
         return False, "Email inválido.", None
     if not senha or len(senha) < 4:
         return False, "Senha deve ter pelo menos 4 caracteres.", None
+    if telefone and not _telefone_valido(telefone):
+        return False, "Telefone inválido. Use DDD + 9 + número (ex: 62 9 91153473).", None
 
     users = carregar_usuarios()
     chave_existente, _ = _buscar_usuario(users, username)
@@ -279,6 +292,7 @@ def iniciar_cadastro_pendente(username: str, email: str, senha: str) -> tuple[bo
     _cadastros_pendentes[pending_token] = {
         'username':   username,
         'email':      email,
+        'telefone':   telefone,
         'senha_hash': _hash_senha(senha),
         'codigo':     codigo,
         'tentativas': 0,
@@ -310,9 +324,10 @@ def confirmar_cadastro(pending_token: str, codigo: str) -> tuple[bool, str]:
         return False, "Usuário já existe."
 
     users[pend['username']] = {
-        "id":    str(uuid.uuid4()),
-        "hash":  pend['senha_hash'],
-        "email": pend['email'],
+        "id":       str(uuid.uuid4()),
+        "hash":     pend['senha_hash'],
+        "email":    pend['email'],
+        "telefone": pend.get('telefone', ''),
     }
     salvar_usuarios(users)
     del _cadastros_pendentes[pending_token]
@@ -1585,7 +1600,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'JSON inválido.'})
                 return
             ok, msg, pending_token = iniciar_cadastro_pendente(
-                data.get('usuario', ''), data.get('email', ''), data.get('senha', '')
+                data.get('usuario', ''), data.get('email', ''), data.get('senha', ''), data.get('telefone', '')
             )
             resp = {'ok': ok, 'msg': msg}
             if ok:
@@ -1679,6 +1694,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if token:
                 destruir_sessao(token)
             self.send_json({'ok': True})
+            return
+
+        # /auth/perfil — retorna dados do perfil do usuário logado
+        if self.path == '/auth/perfil':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            users = carregar_usuarios()
+            chave, u = _buscar_usuario(users, sess['usuario'])
+            if u is None:
+                self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'})
+                return
+            self.send_json({
+                'ok':       True,
+                'usuario':  chave,
+                'email':    u.get('email', ''),
+                'telefone': u.get('telefone', ''),
+            })
+            return
+
+        # /auth/perfil/atualizar — atualiza telefone do usuário logado
+        if self.path == '/auth/perfil/atualizar':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            telefone_raw = data.get('telefone', '').strip()
+            telefone = _normalizar_telefone(telefone_raw)
+            if telefone and not _telefone_valido(telefone):
+                self.send_json({'ok': False, 'erro': 'Telefone inválido. Use DDD + 9 + número (ex: 62 9 91153473).'})
+                return
+            users = carregar_usuarios()
+            chave, u = _buscar_usuario(users, sess['usuario'])
+            if u is None:
+                self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'})
+                return
+            users[chave]['telefone'] = telefone
+            salvar_usuarios(users)
+            self.send_json({'ok': True, 'msg': 'Perfil atualizado com sucesso.'})
             return
 
         # /assinatura/solicitar — usuário pede um plano (não exige acesso ativo,
