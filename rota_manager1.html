@@ -371,68 +371,98 @@ header .badge b { color: var(--accent2); }
   .hist-del:hover { opacity: 1; color: var(--danger); }
   #hist-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
 
-  /* ── Painel Admin (mesmo padrão visual do histórico) ── */
+  /* ── Painel Admin — ocupa a tela inteira (não é mais um drawer lateral) ── */
   #admin-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.55);
+    background: var(--bg);
     z-index: 500;
-    align-items: flex-start;
-    justify-content: flex-end;
+    align-items: stretch;
+    justify-content: stretch;
   }
   #admin-overlay.show { display: flex; }
   #admin-panel {
-    background: var(--surface);
-    border-left: 2px solid var(--border);
-    width: 380px;
-    max-width: 95vw;
+    background: var(--bg);
+    border-left: none;
+    width: 100vw;
+    max-width: 100vw;
     height: 100%;
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+    box-shadow: none;
   }
   #admin-header {
     display: flex;
     align-items: center;
-    padding: 16px 18px;
+    padding: env(safe-area-inset-top) max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));
+    padding-top: max(16px, env(safe-area-inset-top));
     border-bottom: 1px solid var(--border);
     gap: 10px;
+    background: var(--surface);
   }
-  #admin-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #admin-header .title { flex: 1; font-size: 17px; font-weight: 700; color: var(--text); font-family: var(--display); letter-spacing: .03em; }
 
-  #admin-novo { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+  #admin-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    max-width: 1280px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  #admin-novo { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; background: var(--surface); }
   .admin-novo-toggle {
     display: flex; align-items: center; justify-content: space-between;
     cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent2);
     padding: 6px 2px;
   }
-  #admin-novo-form { padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  #admin-novo-form { padding-top: 8px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .admin-input { width: 100%; box-sizing: border-box; }
   .admin-checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
 
   .admin-msg {
-    font-size: 12px; padding: 0 14px; min-height: 0;
+    font-size: 12px; padding: 0; min-height: 0;
   }
-  .admin-msg.show { padding: 8px 14px; }
+  .admin-msg.show { padding: 8px 0; }
   .admin-msg.ok    { color: #4ade80; }
   .admin-msg.erro  { color: var(--danger); }
 
-  #admin-list { flex: 1; overflow-y: auto; padding: 10px; }
+  #admin-filtro {
+    margin-bottom: 14px;
+  }
+  #admin-filtro input {
+    width: 100%; max-width: 360px; box-sizing: border-box;
+  }
+  #admin-contagem { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  #admin-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
   .admin-item {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 8px;
+    padding: 14px 16px;
     position: relative;
   }
-  .admin-item-nome { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; display: flex; align-items: center; gap: 6px; }
+  .admin-item-nome { font-size: 14px; font-weight: 700; color: var(--text); word-break: break-all; display: flex; align-items: center; gap: 6px; }
   .admin-tag-admin {
     font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent);
     border-radius: 999px; padding: 1px 7px;
   }
-  .admin-item-email { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .admin-item-campo {
+    display: flex; gap: 6px; align-items: baseline;
+    font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all;
+  }
+  .admin-item-campo b { color: var(--text); font-weight: 600; flex-shrink: 0; }
+  .admin-item-email,
+  .admin-item-telefone { font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all; }
   .admin-acesso-badge {
     display: inline-block; font-size: 10px; font-weight: 700; border-radius: 999px;
     padding: 2px 9px; letter-spacing: .02em;
@@ -440,18 +470,18 @@ header .badge b { color: var(--accent2); }
   .admin-acesso-ok       { color: #4ade80; border: 1px solid #4ade80; background: rgba(74,222,128,.08); }
   .admin-acesso-expirado { color: var(--accent);  border: 1px solid var(--accent);  background: rgba(245,158,11,.08); }
   .admin-acesso-sem      { color: var(--muted); border: 1px solid var(--border); }
-  .admin-item-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .admin-item-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   .admin-item-actions button {
-    flex: 1; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;
+    flex: 1; min-width: 90px; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer;
     transition: border-color .15s;
   }
   .admin-item-actions button:hover { border-color: var(--accent2); color: var(--accent2); }
   .admin-item-actions button.danger:hover { border-color: var(--danger); color: var(--danger); }
-  #admin-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  #admin-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
 
   @media (max-width: 640px) {
-    #admin-panel { width: 100vw; }
+    #admin-list { grid-template-columns: 1fr; }
   }
 
   /* ── Modal de opções de exportação ── */
@@ -2006,7 +2036,7 @@ display: flex; align-items: center;
 </div>
 
 <!-- ══ PAINEL ADMIN ══ -->
-<div id="admin-overlay" onclick="fecharAdmin(event)">
+<div id="admin-overlay">
   <div id="admin-panel">
     <div id="admin-header">
       <span>🛠</span>
@@ -2014,23 +2044,30 @@ display: flex; align-items: center;
       <button class="close-btn" onclick="fecharAdmin()">✕</button>
     </div>
 
-    <div id="admin-novo">
-      <div class="admin-novo-toggle" id="admin-novo-toggle" onclick="toggleNovoUsuario()">
-        <span>➕ Novo usuário</span><span id="admin-novo-seta">▾</span>
+    <div id="admin-body">
+      <div id="admin-novo">
+        <div class="admin-novo-toggle" id="admin-novo-toggle" onclick="toggleNovoUsuario()">
+          <span>➕ Novo usuário</span><span id="admin-novo-seta">▾</span>
+        </div>
+        <div id="admin-novo-form" style="display:none">
+          <input class="login-input admin-input" id="adm-novo-user" type="text" placeholder="Usuário" autocomplete="off">
+          <input class="login-input admin-input" id="adm-novo-email" type="email" placeholder="Email (opcional)" autocomplete="off">
+          <input class="login-input admin-input" id="adm-novo-pass" type="text" placeholder="Senha" autocomplete="off">
+          <label class="admin-checkbox"><input type="checkbox" id="adm-novo-isadmin"> Tornar administrador</label>
+          <button class="btn btn-primary" id="btn-adm-criar" onclick="adminCriarUsuario()" style="width:100%;margin-top:6px">Criar usuário</button>
+        </div>
       </div>
-      <div id="admin-novo-form" style="display:none">
-        <input class="login-input admin-input" id="adm-novo-user" type="text" placeholder="Usuário" autocomplete="off">
-        <input class="login-input admin-input" id="adm-novo-email" type="email" placeholder="Email (opcional)" autocomplete="off">
-        <input class="login-input admin-input" id="adm-novo-pass" type="text" placeholder="Senha" autocomplete="off">
-        <label class="admin-checkbox"><input type="checkbox" id="adm-novo-isadmin"> Tornar administrador</label>
-        <button class="btn btn-primary" id="btn-adm-criar" onclick="adminCriarUsuario()" style="width:100%;margin-top:6px">Criar usuário</button>
+
+      <div id="admin-msg" class="admin-msg"></div>
+
+      <div id="admin-filtro">
+        <input class="login-input" id="adm-busca" type="text" placeholder="🔎 Buscar por usuário ou email..." autocomplete="off" oninput="filtrarListaAdmin()">
       </div>
-    </div>
+      <div id="admin-contagem"></div>
 
-    <div id="admin-msg" class="admin-msg"></div>
-
-    <div id="admin-list">
-      <div id="admin-empty">Carregando usuários...</div>
+      <div id="admin-list">
+        <div id="admin-empty">Carregando usuários...</div>
+      </div>
     </div>
   </div>
 </div>
@@ -4346,8 +4383,18 @@ function adminMsg(msg, tipo) {
   setTimeout(() => { el.className = 'admin-msg'; }, 3500);
 }
 
+// Formata telefone BR (DDD + 9 + 8 dígitos, ex: 62991153473) pra exibição: (62) 99115-3473
+function formatTelefoneExibicao(tel) {
+  const d = (tel || '').replace(/\D/g, '');
+  if (d.length !== 11) return tel || '';
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+}
+
+let _listaAdminCompleta = [];
+
 async function carregarListaAdmin() {
   document.getElementById('admin-list').innerHTML = '<div id="admin-empty">Carregando usuários...</div>';
+  document.getElementById('admin-contagem').textContent = '';
   try {
     const r = await fetch(SERVER + '/admin/usuarios', { headers: authHeaders() });
     const d = await r.json();
@@ -4356,17 +4403,34 @@ async function carregarListaAdmin() {
         `<div id="admin-empty">${escHtml(d.erro || 'Não foi possível carregar.')}</div>`;
       return;
     }
-    renderListaAdmin(d.usuarios || []);
+    _listaAdminCompleta = d.usuarios || [];
+    document.getElementById('adm-busca').value = '';
+    renderListaAdmin(_listaAdminCompleta);
   } catch (e) {
     document.getElementById('admin-list').innerHTML =
       '<div id="admin-empty">Não foi possível conectar ao servidor.</div>';
   }
 }
 
-function renderListaAdmin(lista) {
+function filtrarListaAdmin() {
+  const termo = document.getElementById('adm-busca').value.trim().toLowerCase();
+  if (!termo) { renderListaAdmin(_listaAdminCompleta); return; }
+  const filtrada = _listaAdminCompleta.filter(u =>
+    (u.usuario || '').toLowerCase().includes(termo) ||
+    (u.email || '').toLowerCase().includes(termo) ||
+    (u.telefone || '').toLowerCase().includes(termo)
+  );
+  renderListaAdmin(filtrada, true);
+}
+
+function renderListaAdmin(lista, isFiltro) {
   const el = document.getElementById('admin-list');
+  const totalGeral = _listaAdminCompleta.length;
+  document.getElementById('admin-contagem').textContent = isFiltro
+    ? `${lista.length} de ${totalGeral} usuário(s)`
+    : `${totalGeral} usuário(s) cadastrado(s)`;
   if (!lista.length) {
-    el.innerHTML = '<div id="admin-empty">Nenhum usuário cadastrado.</div>';
+    el.innerHTML = `<div id="admin-empty">${isFiltro ? 'Nenhum usuário encontrado.' : 'Nenhum usuário cadastrado.'}</div>`;
     return;
   }
   const agora = Date.now();
@@ -4407,7 +4471,8 @@ function renderListaAdmin(lista) {
         👤 ${escHtml(u.usuario)}
         ${u.is_admin ? '<span class="admin-tag-admin">ADMIN</span>' : ''}
       </div>
-      ${u.email ? `<div class="admin-item-email">${escHtml(u.email)}</div>` : ''}
+      <div class="admin-item-campo"><b>Email:</b> <span>${u.email ? escHtml(u.email) : '—'}</span></div>
+      <div class="admin-item-campo"><b>Número:</b> <span>${u.telefone ? escHtml(formatTelefoneExibicao(u.telefone)) : '—'}</span></div>
       <div style="margin-top:6px">${statusHtml}</div>
       <div class="admin-item-actions">
         <button onclick="adminResetarSenha('${escHtml(u.usuario)}')">🔑 Resetar senha</button>

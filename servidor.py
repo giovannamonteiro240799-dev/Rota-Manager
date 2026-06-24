@@ -780,6 +780,7 @@ def admin_listar_usuarios() -> list:
         out.append({
             "usuario":            nome,
             "email":              dados.get("email", ""),
+            "telefone":           dados.get("telefone", ""),
             "is_admin":           bool(dados.get("is_admin", False)),
             "acesso_expira_em":   dados.get("acesso_expira_em"),    # ISO string ou None
             "avulsa_creditos":    int(dados.get("avulsa_creditos", 0) or 0),
