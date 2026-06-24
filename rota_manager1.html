@@ -1589,125 +1589,175 @@ display: flex; align-items: center;
 .profile-chevron svg { width: 14px; height: 14px; }
 .profile-trigger[aria-expanded="true"] .profile-chevron { transform: rotate(180deg); }
 
-/* dropdown */
-.profile-dropdown {
-position: absolute;
-top: calc(100% + 8px);
-right: 0;
-min-width: 260px;
-background: var(--surface);
-border: 1px solid var(--border);
-border-radius: 12px;
-box-shadow: 0 8px 32px rgba(0,0,0,.5);
-z-index: 500;
-overflow: hidden;
-opacity: 0;
-visibility: hidden;
-transform: translateY(-6px);
-transition: opacity .15s, transform .15s, visibility .15s;
+/* ── Profile modal overlay (fullscreen) ── */
+.profile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s, visibility .2s;
+  padding: 16px;
+  box-sizing: border-box;
 }
-.profile-dropdown.open {
-opacity: 1;
-visibility: visible;
-transform: translateY(0);
+.profile-modal-overlay.open {
+  opacity: 1;
+  visibility: visible;
 }
-.profile-dd-header {
-padding: 16px;
-border-bottom: 1px solid var(--border);
-display: flex;
-align-items: center;
-gap: 12px;
+.profile-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  width: 100%;
+  max-width: 440px;
+  overflow: hidden;
+  transform: scale(.96) translateY(8px);
+  transition: transform .2s;
+}
+.profile-modal-overlay.open .profile-modal {
+  transform: scale(1) translateY(0);
+}
+.profile-modal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-modal-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--display);
+}
+.profile-modal-close {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: .15s;
+}
+.profile-modal-close:hover { color: var(--text); border-color: var(--border); background: var(--surface2); }
+.profile-modal-close svg { width: 16px; height: 16px; }
+.profile-modal-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
 }
 .profile-dd-avatar {
-width: 42px; height: 42px;
-border-radius: 50%;
-background: var(--accent);
-color: #000;
-font-size: 17px;
-font-weight: 800;
-display: flex; align-items: center; justify-content: center;
-font-family: var(--display);
-flex-shrink: 0;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #000;
+  font-size: 20px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display);
+  flex-shrink: 0;
 }
 .profile-dd-name {
-font-size: 14px;
-font-weight: 700;
-color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--display);
+}
+.profile-modal-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 .profile-dd-fields {
-padding: 12px 16px;
-display: flex;
-flex-direction: column;
-gap: 10px;
-border-bottom: 1px solid var(--border);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
 }
 .profile-field {
-display: flex;
-flex-direction: column;
-gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .profile-field label {
-font-size: 10px;
-font-weight: 700;
-letter-spacing: .06em;
-text-transform: uppercase;
-color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .profile-field-value {
-font-size: 13px;
-color: var(--text);
+  font-size: 13px;
+  color: var(--text);
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border: 1px solid transparent;
 }
 .profile-field-input {
-background: var(--surface2);
-border: 1px solid var(--border);
-border-radius: 6px;
-color: var(--text);
-font-size: 13px;
-padding: 6px 10px;
-width: 100%;
-box-sizing: border-box;
-font-family: var(--font);
-transition: border-color .15s;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font);
+  transition: border-color .15s;
 }
 .profile-field-input:focus { outline: none; border-color: var(--accent2); }
 .profile-field-input.error { border-color: var(--danger); }
 .profile-field-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
-.profile-field-msg { font-size: 11px; margin-top: 3px; }
+.profile-field-msg { font-size: 11px; margin-top: 4px; min-height: 15px; }
 .profile-field-msg.ok  { color: #4ade80; }
 .profile-field-msg.err { color: var(--danger); }
-.profile-dd-actions {
-padding: 10px 16px;
-display: flex;
-flex-direction: column;
-gap: 6px;
+.profile-modal-actions {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .btn-profile-save {
-background: var(--accent);
-color: #000;
-border: none;
-border-radius: 6px;
-padding: 8px 14px;
-font-size: 12px;
-font-weight: 800;
-cursor: pointer;
-transition: filter .15s;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter .15s;
+  width: 100%;
 }
 .btn-profile-save:hover { filter: brightness(1.1); }
 .btn-profile-save:disabled { opacity: .5; cursor: default; }
 .btn-logout {
-background: none;
-border: 1px solid var(--border);
-border-radius: 6px;
-color: var(--muted);
-font-size: 12px;
-font-weight: 700;
-padding: 7px 14px;
-cursor: pointer;
-transition: .15s;
-width: 100%;
-text-align: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: .15s;
+  width: 100%;
+  text-align: center;
 }
 .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+/* keep profile-dropdown class for compat but unused visually */
+.profile-dropdown { display: none !important; }
 
 @media (max-width: 640px) {
 .login-card { padding: 28px 20px; border-radius: 12px; }
@@ -2057,11 +2107,26 @@ text-align: center;
       </svg>
     </div>
   </button>
-  <div class="profile-dropdown" id="profile-dropdown">
-    <div class="profile-dd-header">
+  <!-- dropdown vazio mantido para compatibilidade -->
+  <div class="profile-dropdown" id="profile-dropdown"></div>
+</div>
+
+<!-- ── Modal de Perfil (fullscreen) ── -->
+<div class="profile-modal-overlay" id="profile-modal-overlay" onclick="fecharProfileModal(event)">
+  <div class="profile-modal" role="dialog" aria-modal="true" aria-label="Perfil do usuário">
+    <div class="profile-modal-topbar">
+      <span class="profile-modal-title">Meu Perfil</span>
+      <button class="profile-modal-close" onclick="fecharProfileDropdown()" aria-label="Fechar">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/>
+        </svg>
+      </button>
+    </div>
+    <div class="profile-modal-hero">
       <div class="profile-dd-avatar" id="profile-dd-avatar">?</div>
       <div>
         <div class="profile-dd-name" id="profile-dd-name">—</div>
+        <div class="profile-modal-sub">Conta RotaManager</div>
       </div>
     </div>
     <div class="profile-dd-fields">
@@ -2071,7 +2136,9 @@ text-align: center;
       </div>
       <div class="profile-field">
         <label>E-mail</label>
-        <div class="profile-field-value" id="profile-val-email">—</div>
+        <input class="profile-field-input" id="profile-email-input" type="email"
+          placeholder="seuemail@exemplo.com" autocomplete="email">
+        <div class="profile-field-msg" id="profile-email-msg"></div>
       </div>
       <div class="profile-field">
         <label>Telefone</label>
@@ -2082,8 +2149,8 @@ text-align: center;
         <div class="profile-field-msg" id="profile-tel-msg"></div>
       </div>
     </div>
-    <div class="profile-dd-actions">
-      <button class="btn-profile-save" id="btn-profile-save" onclick="salvarPerfil()">Salvar telefone</button>
+    <div class="profile-modal-actions">
+      <button class="btn-profile-save" id="btn-profile-save" onclick="salvarPerfil()">💾 Salvar alterações</button>
       <button class="btn-logout" onclick="fazerLogout()">Sair da conta</button>
     </div>
   </div>
@@ -4822,25 +4889,30 @@ document.getElementById('profile-tel-msg').textContent = '';
 }
 function telPerfilKeydown(e) { if (e.key === 'Enter') salvarPerfil(); }
 
-// ── Profile dropdown ───────────────────────────────────────────────────
+// ── Profile modal ───────────────────────────────────────────────────
 function toggleProfileDropdown() {
-const dd = document.getElementById('profile-dropdown');
-const trigger = document.getElementById('profile-trigger');
-const isOpen = dd.classList.contains('open');
-if (isOpen) { fecharProfileDropdown(); }
-else {
-  dd.classList.add('open');
-  trigger.setAttribute('aria-expanded', 'true');
-}
+  const overlay = document.getElementById('profile-modal-overlay');
+  const isOpen = overlay.classList.contains('open');
+  if (isOpen) { fecharProfileDropdown(); }
+  else {
+    overlay.classList.add('open');
+    document.getElementById('profile-trigger').setAttribute('aria-expanded', 'true');
+    // limpar msgs ao abrir
+    document.getElementById('profile-tel-msg').textContent = '';
+    document.getElementById('profile-email-msg').textContent = '';
+  }
 }
 function fecharProfileDropdown() {
-document.getElementById('profile-dropdown').classList.remove('open');
-document.getElementById('profile-trigger').setAttribute('aria-expanded', 'false');
+  document.getElementById('profile-modal-overlay').classList.remove('open');
+  document.getElementById('profile-trigger').setAttribute('aria-expanded', 'false');
 }
-// Fechar ao clicar fora
-document.addEventListener('click', function(e) {
-const hu = document.getElementById('header-user');
-if (hu && !hu.contains(e.target)) fecharProfileDropdown();
+function fecharProfileModal(e) {
+  // fecha ao clicar no overlay (fora do card)
+  if (e.target === document.getElementById('profile-modal-overlay')) fecharProfileDropdown();
+}
+// Fechar com ESC
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') fecharProfileDropdown();
 });
 
 async function carregarPerfilUsuario() {
@@ -4849,7 +4921,8 @@ const r = await fetch(SERVER + '/auth/perfil', { headers: authHeaders() });
 if (!r.ok) return;
 const d = await r.json();
 if (d.ok) {
-  document.getElementById('profile-val-email').textContent = d.email || '—';
+  const emailInput = document.getElementById('profile-email-input');
+  if (emailInput) emailInput.value = d.email || '';
   const telInput = document.getElementById('profile-tel-input');
   telInput.value = d.telefone ? _formatarTelBR(d.telefone) : '';
 }
@@ -4857,41 +4930,56 @@ if (d.ok) {
 }
 
 async function salvarPerfil() {
-const telInput = document.getElementById('profile-tel-input');
-const msg = document.getElementById('profile-tel-msg');
-const btn = document.getElementById('btn-profile-save');
+const telInput   = document.getElementById('profile-tel-input');
+const telMsg     = document.getElementById('profile-tel-msg');
+const emailInput = document.getElementById('profile-email-input');
+const emailMsg   = document.getElementById('profile-email-msg');
+const btn        = document.getElementById('btn-profile-save');
+
+// Validar telefone
 const digits = _apenasDigitos(telInput.value);
-// Validação: vazio ok, ou 11 dígitos começando com DDD+9
 if (digits && !/^\d{2}9\d{8}$/.test(digits)) {
   telInput.classList.add('error');
-  msg.textContent = 'Formato inválido. Ex: 62 9 91153473';
-  msg.className = 'profile-field-msg err';
+  telMsg.textContent = 'Formato inválido. Ex: 62 9 91153473';
+  telMsg.className = 'profile-field-msg err';
   return;
 }
+// Validar email
+const email = emailInput.value.trim();
+if (email && !email.includes('@')) {
+  emailInput.classList.add('error');
+  emailMsg.textContent = 'E-mail inválido.';
+  emailMsg.className = 'profile-field-msg err';
+  return;
+}
+
 btn.disabled = true;
 btn.textContent = '⏳ Salvando...';
+telMsg.textContent = '';
+emailMsg.textContent = '';
 try {
 const r = await fetch(SERVER + '/auth/perfil/atualizar', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', ...authHeaders() },
-  body: JSON.stringify({ telefone: digits })
+  body: JSON.stringify({ telefone: digits, email: email })
 });
 const d = await r.json();
 if (d.ok) {
-  msg.textContent = '✓ Salvo!';
-  msg.className = 'profile-field-msg ok';
+  telMsg.textContent = '✓ Salvo!';
+  telMsg.className = 'profile-field-msg ok';
   telInput.classList.remove('error');
-  setTimeout(() => { msg.textContent = ''; }, 2500);
+  emailInput.classList.remove('error');
+  setTimeout(() => { telMsg.textContent = ''; }, 2500);
 } else {
-  msg.textContent = d.erro || 'Erro ao salvar.';
-  msg.className = 'profile-field-msg err';
+  telMsg.textContent = d.erro || 'Erro ao salvar.';
+  telMsg.className = 'profile-field-msg err';
 }
 } catch(e) {
-  msg.textContent = 'Falha de conexão.';
-  msg.className = 'profile-field-msg err';
+  telMsg.textContent = 'Falha de conexão.';
+  telMsg.className = 'profile-field-msg err';
 } finally {
   btn.disabled = false;
-  btn.textContent = 'Salvar telefone';
+  btn.textContent = '💾 Salvar alterações';
 }
 }
 

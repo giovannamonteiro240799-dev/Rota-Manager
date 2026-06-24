@@ -1714,7 +1714,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             })
             return
 
-        # /auth/perfil/atualizar — atualiza telefone do usuário logado
+        # /auth/perfil/atualizar — atualiza telefone e/ou email do usuário logado
         if self.path == '/auth/perfil/atualizar':
             sess = self._sessao_ou_401()
             if sess is None:
@@ -1730,12 +1730,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if telefone and not _telefone_valido(telefone):
                 self.send_json({'ok': False, 'erro': 'Telefone inválido. Use DDD + 9 + número (ex: 62 9 91153473).'})
                 return
+            email_novo = data.get('email', '').strip()
+            if email_novo and '@' not in email_novo:
+                self.send_json({'ok': False, 'erro': 'E-mail inválido.'})
+                return
             users = carregar_usuarios()
             chave, u = _buscar_usuario(users, sess['usuario'])
             if u is None:
                 self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'})
                 return
             users[chave]['telefone'] = telefone
+            if email_novo:
+                users[chave]['email'] = email_novo
             salvar_usuarios(users)
             self.send_json({'ok': True, 'msg': 'Perfil atualizado com sucesso.'})
             return
