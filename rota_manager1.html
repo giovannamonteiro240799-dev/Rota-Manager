@@ -93,7 +93,15 @@ display: flex;
 align-items: center;
 gap: 8px;
 }
-header .logo span { color: var(--text); }
+header .logo span:not(.logo-emoji) { color: var(--text); }
+header .logo .logo-emoji {
+  font-size: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-top: -2px;
+}
 header .spacer { flex: 1; }
 header .badge {
 background: var(--surface2);
@@ -1427,7 +1435,7 @@ text-transform: uppercase;
 color: var(--accent);
 margin-bottom: 4px;
 }
-.login-logo span { color: var(--text); }
+.login-logo span:not(.logo-emoji) { color: var(--text); }
 .login-sub {
 text-align: center;
 font-size: 12px;
@@ -1650,7 +1658,7 @@ transition: .15s;
 <!-- ══ TELA DE LOGIN ══ -->
 <div id="login-screen">
 <div class="login-card animate__animated animate__fadeInDown" style="--animate-duration:.5s">
-<div class="login-logo">🗺 ROTA<span>MANAGER</span></div>
+<div class="login-logo"><span class="logo-emoji">🗺</span> ROTA<span>MANAGER</span></div>
 <div class="login-sub">Sistema de gerenciamento de rotas</div>
 
 <div class="login-tabs">
@@ -1904,9 +1912,8 @@ transition: .15s;
 
 
 <header>
-<div class="logo">🗺 ROTA<span>MANAGER</span></div>
+<div class="logo"><span class="logo-emoji">🗺</span> ROTA<span>MANAGER</span></div>
 <div class="spacer"></div>
-<div class="badge" id="file-badge"></div>
   <button class="btn-hist" id="btn-hist" onclick="abrirHistorico()" style="display:none">
     🗂 <span class="label">Histórico</span>
   </button>
@@ -1917,7 +1924,7 @@ transition: .15s;
     🛠 <span class="label">Admin</span>
   </button>
 <div class="header-user" id="header-user" style="display:none">
-<span>👤</span><span class="user-name" id="header-username"></span>
+<span class="user-name" id="header-username"></span>
 <button class="btn-logout" onclick="fazerLogout()">Sair</button>
 </div>
 </header>
