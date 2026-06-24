@@ -2326,9 +2326,9 @@ _headers = headers; _colLat = colLat; _colLon = colLon; _colCoor = colCoor;
 document.getElementById('loading-msg').textContent = 'Agrupando rotas...';
 setTimeout(() => {
 const grouped = groupRows(rows);
-_allRows = grouped;
+_allRows = sortByAddress(grouped);
 hideLoading();
-renderTable(grouped);
+renderTable(_allRows);
 updateStats(grouped);
 document.getElementById('file-badge').innerHTML = `📄 <b>${_fileName}</b> — ${grouped.length} endereços`;
 document.getElementById('file-badge').classList.add('show');
@@ -2679,6 +2679,14 @@ updateStats(_allRows);
 
 function escHtml(s) {
 return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function sortByAddress(rows) {
+  return [...rows].sort((a, b) => {
+    const la = (a.group_label || a.address || '').toUpperCase();
+    const lb = (b.group_label || b.address || '').toUpperCase();
+    return la.localeCompare(lb, 'pt-BR', { numeric: true, sensitivity: 'base' });
+  });
 }
 
 function filtrarTabela() {
@@ -3670,7 +3678,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 
 // 4) Popula a tabela
     _headers = dado.headers || [];
-    _allRows = normalizarLinhas(dado.rows || []);
+    _allRows = sortByAddress(normalizarLinhas(dado.rows || []));
 
     // Detecta índices de lat/lon/coord nos headers recebidos
     const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
@@ -3728,7 +3736,7 @@ return norm;
 // ── Exibe dados no app (usado pelo histórico e pelo pipeline) ─────────
 function mostrarRotaNoApp(rows, headers, nomeArquivo) {
   _headers = headers || [];
-  _allRows = normalizarLinhas(rows);
+  _allRows = sortByAddress(normalizarLinhas(rows));
 
   const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
   _colLat  = hUp.findIndex(h => /LATITUDE|LAT/.test(h));
