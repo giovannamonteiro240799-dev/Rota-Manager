@@ -461,6 +461,8 @@ header .badge b { color: var(--accent2); }
     font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all;
   }
   .admin-item-campo b { color: var(--text); font-weight: 600; flex-shrink: 0; }
+  .admin-item-contato-edit { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .admin-item-contato-edit .admin-input { font-size: 12px; padding: 7px 10px; }
   .admin-item-email,
   .admin-item-telefone { font-size: 12px; color: var(--muted); margin-top: 4px; word-break: break-all; }
   .admin-acesso-badge {
@@ -4434,7 +4436,7 @@ function renderListaAdmin(lista, isFiltro) {
     return;
   }
   const agora = Date.now();
-  el.innerHTML = lista.map(u => {
+  el.innerHTML = lista.map((u, idx) => {
     const expiraEm = u.acesso_expira_em ? new Date(u.acesso_expira_em) : null;
     const temAcesso = expiraEm && expiraEm.getTime() > agora;
     let statusHtml;
@@ -4466,16 +4468,31 @@ function renderListaAdmin(lista, isFiltro) {
     }
 
     return `
-    <div class="admin-item">
+    <div class="admin-item" data-usuario="${escHtml(u.usuario)}">
       <div class="admin-item-nome">
         👤 ${escHtml(u.usuario)}
         ${u.is_admin ? '<span class="admin-tag-admin">ADMIN</span>' : ''}
       </div>
-      <div class="admin-item-campo"><b>Email:</b> <span>${u.email ? escHtml(u.email) : '—'}</span></div>
-      <div class="admin-item-campo"><b>Número:</b> <span>${u.telefone ? escHtml(formatTelefoneExibicao(u.telefone)) : '—'}</span></div>
+
+      <div class="admin-item-contato-view" id="contato-view-${idx}">
+        <div class="admin-item-campo"><b>Email:</b> <span>${u.email ? escHtml(u.email) : '—'}</span></div>
+        <div class="admin-item-campo"><b>Número:</b> <span>${u.telefone ? escHtml(formatTelefoneExibicao(u.telefone)) : '—'}</span></div>
+      </div>
+      <div class="admin-item-contato-edit" id="contato-edit-${idx}" style="display:none">
+        <input class="login-input admin-input" id="edit-email-${idx}" type="email" placeholder="Email" value="${escHtml(u.email || '')}" autocomplete="off">
+        <input class="login-input admin-input" id="edit-tel-${idx}" type="text" placeholder="Telefone (ex: 62 99115-3473)" value="${escHtml(u.telefone ? formatTelefoneExibicao(u.telefone) : '')}" autocomplete="off">
+        <div class="admin-item-actions">
+          <button onclick="salvarEdicaoContato(${idx}, '${escHtml(u.usuario)}')">💾 Salvar</button>
+          <button class="danger" onclick="cancelarEdicaoContato(${idx})">✕ Cancelar</button>
+        </div>
+      </div>
+
       <div style="margin-top:6px">${statusHtml}</div>
       <div class="admin-item-actions">
+        <button onclick="iniciarEdicaoContato(${idx})">✏️ Editar contato</button>
         <button onclick="adminResetarSenha('${escHtml(u.usuario)}')">🔑 Resetar senha</button>
+      </div>
+      <div class="admin-item-actions">
         <button class="danger" onclick="adminApagarUsuario('${escHtml(u.usuario)}')">🗑 Apagar</button>
       </div>
       ${!u.is_admin ? `
@@ -4487,6 +4504,44 @@ function renderListaAdmin(lista, isFiltro) {
     </div>
   `;
   }).join('');
+}
+
+function iniciarEdicaoContato(idx) {
+  document.getElementById('contato-view-' + idx).style.display = 'none';
+  document.getElementById('contato-edit-' + idx).style.display = 'flex';
+  setTimeout(() => document.getElementById('edit-email-' + idx).focus(), 30);
+}
+
+function cancelarEdicaoContato(idx) {
+  document.getElementById('contato-edit-' + idx).style.display = 'none';
+  document.getElementById('contato-view-' + idx).style.display = '';
+}
+
+async function salvarEdicaoContato(idx, usuario) {
+  const email    = document.getElementById('edit-email-' + idx).value.trim();
+  const telefone = document.getElementById('edit-tel-' + idx).value.trim();
+
+  const btns = document.querySelectorAll(`#contato-edit-${idx} .admin-item-actions button`);
+  btns.forEach(b => b.disabled = true);
+  try {
+    const r = await fetch(SERVER + '/admin/usuarios/editar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ usuario, email, telefone })
+    });
+    const d = await r.json();
+    adminMsg(d.msg, d.ok ? 'ok' : 'erro');
+    if (d.ok) {
+      const item = _listaAdminCompleta.find(u => u.usuario === usuario);
+      if (item) { item.email = email; item.telefone = telefone.replace(/[\s\-().]+/g, ''); }
+      const termo = document.getElementById('adm-busca').value.trim();
+      if (termo) filtrarListaAdmin(); else renderListaAdmin(_listaAdminCompleta);
+    }
+  } catch (e) {
+    adminMsg('Não foi possível conectar ao servidor.', 'erro');
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
 }
 
 async function adminCriarUsuario() {

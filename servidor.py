@@ -837,6 +837,43 @@ def admin_resetar_senha(username: str, nova_senha: str) -> tuple[bool, str]:
     return True, "Senha redefinida com sucesso."
 
 
+def admin_editar_contato(username: str, email: str = "", telefone: str = "") -> tuple[bool, str]:
+    """Atualiza email e/ou telefone de um usuário (uso exclusivo do admin).
+    Strings vazias (ou None) limpam o respectivo campo; passe o valor já
+    existente se não quiser alterá-lo."""
+    users = carregar_usuarios()
+    chave, u = _buscar_usuario(users, username)
+    if u is None:
+        return False, "Usuário não encontrado."
+
+    email = (email or "").strip().lower()
+    if email and not _email_valido(email):
+        return False, "Email inválido."
+    if email and any(
+        k.lower() != chave.lower() and (d.get('email', '').lower() == email)
+        for k, d in users.items()
+    ):
+        return False, "Este email já está cadastrado em outra conta."
+
+    telefone_raw = (telefone or "").strip()
+    telefone_norm = _normalizar_telefone(telefone_raw) if telefone_raw else ""
+    if telefone_norm and not _telefone_valido(telefone_norm):
+        return False, "Telefone inválido. Use DDD + 9 + número (ex: 62 9 91153473)."
+
+    if email:
+        u["email"] = email
+    else:
+        u.pop("email", None)
+
+    if telefone_norm:
+        u["telefone"] = telefone_norm
+    else:
+        u.pop("telefone", None)
+
+    salvar_usuarios(users)
+    return True, "Dados atualizados com sucesso."
+
+
 def admin_apagar_usuario(username: str, quem_pediu: str) -> tuple[bool, str]:
     users = carregar_usuarios()
     chave, u = _buscar_usuario(users, username)
@@ -1852,6 +1889,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'erro': 'JSON inválido.'})
                 return
             ok, msg = admin_resetar_senha(data.get('usuario', ''), data.get('nova_senha', ''))
+            self.send_json({'ok': ok, 'msg': msg})
+            return
+
+        # /admin/usuarios/editar — atualiza email e/ou telefone de um usuário (só admin)
+        if self.path == '/admin/usuarios/editar':
+            sess = self._sessao_admin_ou_403()
+            if sess is None:
+                return
+            length = int(self.headers.get('Content-Length', 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except Exception:
+                self.send_json({'ok': False, 'erro': 'JSON inválido.'})
+                return
+            ok, msg = admin_editar_contato(
+                data.get('usuario', ''),
+                data.get('email', ''),
+                data.get('telefone', ''),
+            )
             self.send_json({'ok': ok, 'msg': msg})
             return
 
