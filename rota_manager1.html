@@ -9,6 +9,9 @@
 <!-- xlsx-js-style: SheetJS com suporte a estilos de célula (cores, fontes, bordas) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
+<!-- animate.css: animações de entrada/saída pra toasts, modais e feedback -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+
 <!-- Fontes industriais: Oswald (display condensado) + Inter (corpo) + JetBrains Mono (técnico) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -274,7 +277,6 @@ header .badge b { color: var(--accent2); }
     display: flex;
     flex-direction: column;
     box-shadow: -4px 0 32px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
   }
   #banco-header {
     display: flex;
@@ -340,7 +342,6 @@ header .badge b { color: var(--accent2); }
     display: flex;
     flex-direction: column;
     box-shadow: -4px 0 32px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
   }
   @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
   #hist-header {
@@ -399,7 +400,6 @@ header .badge b { color: var(--accent2); }
     display: flex;
     flex-direction: column;
     box-shadow: -4px 0 32px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
   }
   #admin-header {
     display: flex;
@@ -482,7 +482,6 @@ header .badge b { color: var(--accent2); }
     width: 600px;
     max-width: 92vw;
     box-shadow: 0 12px 48px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
     overflow: hidden;
   }
   #export-modal-header {
@@ -611,7 +610,6 @@ header .badge b { color: var(--accent2); }
     display: flex;
     flex-direction: column;
     box-shadow: -4px 0 32px rgba(0,0,0,.5);
-    animation: slideIn .18s ease;
   }
   #assinatura-header {
     display: flex;
@@ -1608,14 +1606,13 @@ transition: .15s;
   box-shadow: 0 8px 32px rgba(0,0,0,.5);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(10px);
-  transition: opacity .2s, transform .2s, visibility .2s;
+  transition: opacity .15s, visibility .15s;
   pointer-events: none;
 }
 #voto-toast.show {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
+  pointer-events: auto;
 }
 #voto-toast-msg {
   font-size: 13px;
@@ -1652,7 +1649,7 @@ transition: .15s;
 
 <!-- ══ TELA DE LOGIN ══ -->
 <div id="login-screen">
-<div class="login-card">
+<div class="login-card animate__animated animate__fadeInDown" style="--animate-duration:.5s">
 <div class="login-logo">🗺 ROTA<span>MANAGER</span></div>
 <div class="login-sub">Sistema de gerenciamento de rotas</div>
 
@@ -2788,8 +2785,19 @@ function mostrarVotoToast(msg, confianca, votosEleita, totalVotos) {
   requestAnimationFrame(() => { barEl.style.width = pct + '%'; });
 
   toast.classList.add('show');
+  toast.classList.remove('animate__animated', 'animate__fadeOutRight');
+  toast.style.setProperty('--animate-duration', '.5s');
+  toast.classList.add('animate__animated', 'animate__bounceInRight');
+
   clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => toast.classList.remove('show'), 5000);
+  toast._timer = setTimeout(() => {
+    toast.classList.remove('animate__bounceInRight');
+    toast.style.setProperty('--animate-duration', '.3s');
+    toast.classList.add('animate__fadeOutRight');
+    setTimeout(() => {
+      toast.classList.remove('show', 'animate__animated', 'animate__fadeOutRight');
+    }, 300);
+  }, 5000);
 }
 
 function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
@@ -3740,18 +3748,54 @@ function mostrarRotaNoApp(rows, headers, nomeArquivo) {
 }
 
 // ══════════════════════════════════════════════════════════
+//  ANIMATE.CSS — helpers genéricos pra abrir/fechar overlays
+//  Painéis laterais (banco, histórico, admin, assinatura) entram
+//  deslizando da direita; o modal de exportação entra com zoom.
+//  Tudo roda rápido (.22–.3s) pra não parecer lento.
+// ══════════════════════════════════════════════════════════
+function _abrirOverlayAnimado(overlayId, panelId, animEntrada) {
+  const overlay = document.getElementById(overlayId);
+  const panel   = panelId ? document.getElementById(panelId) : null;
+  overlay.classList.add('show');
+  overlay.classList.remove('animate__animated', 'animate__fadeOut');
+  overlay.style.setProperty('--animate-duration', '.22s');
+  overlay.classList.add('animate__animated', 'animate__fadeIn');
+  if (panel) {
+    panel.classList.remove('animate__animated', 'animate__slideOutRight', 'animate__zoomOut');
+    panel.style.setProperty('--animate-duration', '.32s');
+    panel.classList.add('animate__animated', animEntrada);
+  }
+}
+
+function _fecharOverlayAnimado(overlayId, panelId, animSaida) {
+  const overlay = document.getElementById(overlayId);
+  const panel   = panelId ? document.getElementById(panelId) : null;
+  overlay.classList.remove('animate__fadeIn');
+  overlay.classList.add('animate__animated', 'animate__fadeOut');
+  if (panel) {
+    panel.classList.remove('animate__animated');
+    panel.style.setProperty('--animate-duration', '.22s');
+    panel.classList.add('animate__animated', animSaida);
+  }
+  setTimeout(() => {
+    overlay.classList.remove('show', 'animate__animated', 'animate__fadeIn', 'animate__fadeOut');
+    if (panel) panel.classList.remove('animate__animated', animSaida);
+  }, 230);
+}
+
+// ══════════════════════════════════════════════════════════
 //  HISTÓRICO DE ROTAS
 // ══════════════════════════════════════════════════════════
 let _nomeAtual = '';
 
 function abrirHistorico() {
   carregarListaHistorico();
-  document.getElementById('hist-overlay').classList.add('show');
+  _abrirOverlayAnimado('hist-overlay', 'hist-panel', 'animate__slideInRight');
 }
 
 function fecharHistorico(e) {
   if (e && e.target !== document.getElementById('hist-overlay')) return;
-  document.getElementById('hist-overlay').classList.remove('show');
+  _fecharOverlayAnimado('hist-overlay', 'hist-panel', 'animate__slideOutRight');
 }
 
 async function carregarListaHistorico() {
@@ -3818,14 +3862,14 @@ function renderHistoricoPanel() { /* chamado ao carregar rota — já atualiza b
 let _bancoCache = [];   // cache local para filtro sem nova request
 
 async function abrirBanco() {
-  document.getElementById('banco-overlay').classList.add('show');
+  _abrirOverlayAnimado('banco-overlay', 'banco-panel', 'animate__slideInRight');
   document.getElementById('banco-search').value = '';
   await carregarBanco();
 }
 
 function fecharBanco(e) {
   if (e && e.target !== document.getElementById('banco-overlay')) return;
-  document.getElementById('banco-overlay').classList.remove('show');
+  _fecharOverlayAnimado('banco-overlay', 'banco-panel', 'animate__slideOutRight');
 }
 
 async function carregarBanco() {
@@ -3941,12 +3985,12 @@ async function tentarRestaurarUltimaRota() {
 
 function abrirExportModal() {
 if (!_allRows.length) { alert("Nenhum dado para exportar."); return; }
-document.getElementById('export-overlay').classList.add('show');
+_abrirOverlayAnimado('export-overlay', 'export-modal', 'animate__zoomIn');
 }
 
 function fecharExportModal(e) {
 if (e && e.target !== document.getElementById('export-overlay')) return;
-document.getElementById('export-overlay').classList.remove('show');
+_fecharOverlayAnimado('export-overlay', 'export-modal', 'animate__zoomOut');
 }
 
 function exportarXlsx(modo) {
@@ -4011,6 +4055,10 @@ XLSX.writeFile(wb, modo === 'detailed' ? "rota_atualizada_detalhada.xlsx" : "rot
 
 btn.textContent = "✔ Exportado!";
 btn.style.background = "#166534";
+btn.classList.remove('animate__animated', 'animate__tada');
+void btn.offsetWidth;
+btn.style.setProperty('--animate-duration', '.6s');
+btn.classList.add('animate__animated', 'animate__tada');
 setTimeout(() => {
 btn.textContent = "⬇️ Exportar xlsx";
 btn.style.background = "";
@@ -4032,12 +4080,12 @@ btn.disabled = false;
 
 function abrirAdmin() {
   carregarListaAdmin();
-  document.getElementById('admin-overlay').classList.add('show');
+  _abrirOverlayAnimado('admin-overlay', 'admin-panel', 'animate__slideInRight');
 }
 
 function fecharAdmin(e) {
   if (e && e.target !== document.getElementById('admin-overlay')) return;
-  document.getElementById('admin-overlay').classList.remove('show');
+  _fecharOverlayAnimado('admin-overlay', 'admin-panel', 'animate__slideOutRight');
 }
 
 function toggleNovoUsuario() {
@@ -4278,13 +4326,13 @@ async function adminRejeitarPlano(usuario) {
 // ══════════════════════════════════════════════════════════
 
 function abrirAssinatura() {
-  document.getElementById('assinatura-overlay').classList.add('show');
+  _abrirOverlayAnimado('assinatura-overlay', 'assinatura-panel', 'animate__slideInRight');
   carregarAssinatura();
 }
 
 function fecharAssinatura(e) {
   if (e && e.target !== document.getElementById('assinatura-overlay')) return;
-  document.getElementById('assinatura-overlay').classList.remove('show');
+  _fecharOverlayAnimado('assinatura-overlay', 'assinatura-panel', 'animate__slideOutRight');
 }
 
 function fmtPreco(v) {
@@ -4493,11 +4541,20 @@ function authHeaders()     { const t = getToken(); return t ? { 'Authorization':
 function showError(msg)   {
 const e = document.getElementById('login-error');
 e.textContent = msg; e.classList.add('show');
+e.classList.remove('animate__animated', 'animate__shakeX');
+e.style.setProperty('--animate-duration', '.5s');
+// reflow pra reiniciar a animação mesmo se já tava com a classe antes
+void e.offsetWidth;
+e.classList.add('animate__animated', 'animate__shakeX');
 document.getElementById('login-success').classList.remove('show');
 }
 function showSuccess(msg) {
 const e = document.getElementById('login-success');
 e.textContent = msg; e.classList.add('show');
+e.classList.remove('animate__animated', 'animate__fadeInDown');
+e.style.setProperty('--animate-duration', '.4s');
+void e.offsetWidth;
+e.classList.add('animate__animated', 'animate__fadeInDown');
 document.getElementById('login-error').classList.remove('show');
 }
 function clearMsgs() {
