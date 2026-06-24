@@ -50,6 +50,7 @@ min-height: 100vh;
 display: flex;
 flex-direction: column;
 }
+body.has-bottom-nav { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
 
 /* ── Header ── */
 header {
@@ -1074,57 +1075,83 @@ tbody tr.tr-selecionada {
 background: rgba(245, 158, 11, .10) !important;
 }
 
-/* ── Botão flutuante: Agrupar selecionados ── */
-.fab-agrupar {
+/* ── Barra de navegação inferior (Lista / Agrupar / Exportar) ── */
+#bottom-nav {
 position: fixed;
-right: max(24px, env(safe-area-inset-right));
-bottom: calc(24px + env(safe-area-inset-bottom));
+left: 0;
+right: 0;
+bottom: 0;
 z-index: 400;
 display: flex;
-align-items: center;
-gap: 8px;
-padding: 13px 22px;
-border: none;
-border-radius: 999px;
-background: var(--accent);
-color: #000;
-font-size: 14px;
-font-weight: 800;
-cursor: pointer;
-box-shadow: 0 6px 24px rgba(0,0,0,.5);
-opacity: 0;
-visibility: hidden;
-transform: translateY(16px);
-transition: opacity .18s, transform .18s, visibility .18s, filter .15s;
+background: var(--surface);
+border-top: 1px solid var(--border);
+padding-bottom: env(safe-area-inset-bottom);
+box-shadow: 0 -2px 16px rgba(0,0,0,.35);
 }
-.fab-agrupar.show {
-opacity: 1;
-visibility: visible;
-transform: translateY(0);
-}
-.fab-agrupar:hover { filter: brightness(1.1); }
-.fab-agrupar.vazio {
-background: var(--surface2);
-color: var(--muted);
-border: 1px solid var(--border);
-}
-.fab-count {
-display: inline-flex;
+#bottom-nav.show { display: flex; }
+.bn-item {
+flex: 1;
+display: flex;
+flex-direction: column;
 align-items: center;
 justify-content: center;
-min-width: 20px;
-height: 20px;
-padding: 0 5px;
-border-radius: 999px;
-background: rgba(0,0,0,.25);
-font-size: 12px;
+gap: 4px;
+padding: 9px 4px 8px;
+background: none;
+border: none;
+cursor: pointer;
+color: var(--muted);
+font-family: var(--font);
+font-size: 11px;
+font-weight: 700;
+letter-spacing: .04em;
+text-transform: uppercase;
+position: relative;
+transition: color .15s;
 }
-.fab-agrupar.vazio .fab-count { background: rgba(255,255,255,.08); }
+.bn-item .bn-icon {
+width: 24px;
+height: 24px;
+display: flex;
+align-items: center;
+justify-content: center;
+}
+.bn-item .bn-icon svg {
+width: 100%;
+height: 100%;
+stroke: currentColor;
+fill: none;
+stroke-width: 1.8;
+stroke-linecap: round;
+stroke-linejoin: round;
+}
+.bn-item.active { color: var(--accent2); }
+.bn-item:disabled { color: var(--muted); opacity: .55; cursor: default; }
+.bn-item:not(:disabled):hover { color: var(--accent2); }
+.bn-item.bn-sucesso { color: #4ade80 !important; }
+.bn-badge {
+position: absolute;
+top: 4px;
+right: calc(50% - 22px);
+min-width: 16px;
+height: 16px;
+padding: 0 4px;
+border-radius: 999px;
+background: var(--accent);
+color: #1a1205;
+font-size: 10px;
+font-weight: 800;
+display: none;
+align-items: center;
+justify-content: center;
+line-height: 1;
+}
+.bn-badge.show { display: flex; }
 
 @media (max-width: 640px) {
-.fab-agrupar { right: max(16px, env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); padding: 12px 18px; font-size: 13px; }
+.bn-item { font-size: 10px; }
+.bn-item .bn-icon { width: 22px; height: 22px; }
 }
-
 /* Botão de mapa */
 .btn-map {
 width: 34px; height: 34px;
@@ -1221,7 +1248,6 @@ max-width: 100%;
 width: 100%;
 order: 3;
 }
-#btn-export { margin-left: 0 !important; }
 #count-badge { order: 4; width: 100%; text-align: center; }
 
 /* Drop zone menor */
@@ -2204,10 +2230,7 @@ display: flex; align-items: center;
 <span style="color:var(--muted);font-size:13px">🔍</span>
 <input class="filter-input" id="filter-input" placeholder="Filtrar endereços..." oninput="filtrarTabela()">
 </div>
-<button class="btn btn-green" id="btn-export" onclick="abrirExportModal()" style="margin-left:auto">
-⬇️ Exportar xlsx
-</button>
-<span id="count-badge" style="font-size:12px;color:var(--muted)"></span>
+<span id="count-badge" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
 </div>
 
 <!-- Drop zone inicial (começa oculta — JS decide qual exibir após checar acesso, evitando flash) -->
@@ -2267,10 +2290,28 @@ Selecionar todos
 </table>
 </div>
 
-<!-- Botão flutuante: agrupar endereços selecionados -->
-<button id="fab-agrupar" class="fab-agrupar vazio" onclick="agruparSelecionados()" title="Agrupar os endereços selecionados">
-🔗 Agrupar <span class="fab-count" id="fab-count">0</span>
-</button>
+<!-- Barra de navegação inferior: Lista / Agrupar / Exportar -->
+<div id="bottom-nav">
+  <button class="bn-item active" id="bn-lista" onclick="irParaLista()" title="Ver lista de endereços">
+    <span class="bn-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="17" rx="2"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg>
+    </span>
+    <span>Lista</span>
+  </button>
+  <button class="bn-item" id="bn-agrupar" onclick="agruparSelecionados()" title="Agrupar os endereços selecionados">
+    <span class="bn-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 3 4 7l8 4 8-4-8-4Z"/><path d="M4 12l8 4 8-4"/><path d="M4 17l8 4 8-4"/></svg>
+    </span>
+    <span>Agrupar</span>
+    <span class="bn-badge" id="bn-agrupar-badge">0</span>
+  </button>
+  <button class="bn-item" id="bn-exportar" onclick="abrirExportModal()" title="Exportar planilha">
+    <span class="bn-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>
+    </span>
+    <span id="bn-exportar-label">Exportar</span>
+  </button>
+</div>
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -2571,6 +2612,8 @@ document.getElementById('loading').classList.add('show');
 document.getElementById('table-section').classList.remove('show');
 document.getElementById('stats-bar').classList.remove('show');
 document.getElementById('toolbar').style.display = 'none';
+document.getElementById('bottom-nav').classList.remove('show');
+document.body.classList.remove('has-bottom-nav');
 }
 
 function hideLoading() {
@@ -2599,6 +2642,8 @@ updateStats(grouped);
 document.getElementById('file-badge').innerHTML = `📄 <b>${_fileName}</b> — ${grouped.length} endereços`;
 document.getElementById('file-badge').classList.add('show');
 document.getElementById('toolbar').style.display = 'flex';
+document.getElementById('bottom-nav').classList.add('show');
+document.body.classList.add('has-bottom-nav');
 }, 50);
 } catch(err) {
 hideLoading();
@@ -2858,14 +2903,18 @@ chk.closest('tr').classList.toggle('tr-selecionada', marcar);
 atualizarFab();
 }
 
+function irParaLista() {
+document.getElementById('table-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function atualizarFab() {
-const fab = document.getElementById('fab-agrupar');
-const cnt = document.getElementById('fab-count');
+const bnAgrupar = document.getElementById('bn-agrupar');
+const badge = document.getElementById('bn-agrupar-badge');
 const n = _selecionados.size;
-cnt.textContent = n;
-fab.classList.toggle('show', n > 0);
-fab.classList.toggle('vazio', n < 2);
-fab.title = n < 2
+badge.textContent = n;
+badge.classList.toggle('show', n > 0);
+bnAgrupar.classList.toggle('active', n >= 2);
+bnAgrupar.title = n < 2
 ? 'Marque ao menos 2 endereços para agrupar'
 : `Agrupar os ${n} endereços selecionados`;
 }
@@ -3965,6 +4014,8 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
     document.getElementById('table-section').classList.add('show');
     document.getElementById('drop-zone').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
+    document.getElementById('bottom-nav').classList.add('show');
+    document.body.classList.add('has-bottom-nav');
     mostrarRotaNoApp(dado.rows || [], dado.headers || [], 'rota_processada_final.xlsx');
 
 } catch(err) {
@@ -4022,6 +4073,8 @@ function mostrarRotaNoApp(rows, headers, nomeArquivo) {
   document.getElementById('table-section').classList.add('show');
   document.getElementById('drop-zone').style.display = 'none';
   document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('bottom-nav').classList.add('show');
+  document.body.classList.add('has-bottom-nav');
   document.getElementById('btn-hist').style.display = '';
   if (isAdminUser()) document.getElementById('btn-banco').style.display = '';
 
@@ -4281,9 +4334,10 @@ if (!_allRows.length) { alert("Nenhum dado para exportar."); return; }
 
 fecharExportModal();
 
-const btn = document.getElementById("btn-export");
+const btn = document.getElementById("bn-exportar");
+const label = document.getElementById("bn-exportar-label");
 btn.disabled = true;
-btn.textContent = "⏳ Exportando...";
+label.textContent = "Exportando...";
 
 try {
 // Exporta só 3 colunas — formato pensado pra importar direto no Circuit:
@@ -4335,20 +4389,20 @@ const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, ws, "Rotas Consolidadas");
 XLSX.writeFile(wb, modo === 'detailed' ? "rota_atualizada_detalhada.xlsx" : "rota_atualizada.xlsx");
 
-btn.textContent = "✔ Exportado!";
-btn.style.background = "#166534";
+btn.classList.add('bn-sucesso');
+label.textContent = "Exportado!";
 btn.classList.remove('animate__animated', 'animate__tada');
 void btn.offsetWidth;
 btn.style.setProperty('--animate-duration', '.6s');
 btn.classList.add('animate__animated', 'animate__tada');
 setTimeout(() => {
-btn.textContent = "⬇️ Exportar xlsx";
-btn.style.background = "";
+label.textContent = "Exportar";
+btn.classList.remove('bn-sucesso');
 btn.disabled = false;
 }, 2500);
 } catch(err) {
 alert("Erro ao exportar: " + err.message);
-btn.textContent = "⬇️ Exportar xlsx";
+label.textContent = "Exportar";
 btn.disabled = false;
 }
 }
