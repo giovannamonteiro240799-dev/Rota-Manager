@@ -1582,6 +1582,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.send_json({'ok': True, 'usuarios': admin_listar_usuarios()})
 
+        elif self.path == '/auth/perfil':
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            users = carregar_usuarios()
+            chave, u = _buscar_usuario(users, sess['usuario'])
+            if u is None:
+                self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'})
+                return
+            self.send_json({
+                'ok':       True,
+                'usuario':  chave,
+                'email':    u.get('email', ''),
+                'telefone': u.get('telefone', ''),
+            })
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -1694,24 +1710,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if token:
                 destruir_sessao(token)
             self.send_json({'ok': True})
-            return
-
-        # /auth/perfil — retorna dados do perfil do usuário logado
-        if self.path == '/auth/perfil':
-            sess = self._sessao_ou_401()
-            if sess is None:
-                return
-            users = carregar_usuarios()
-            chave, u = _buscar_usuario(users, sess['usuario'])
-            if u is None:
-                self.send_json({'ok': False, 'erro': 'Usuário não encontrado.'})
-                return
-            self.send_json({
-                'ok':       True,
-                'usuario':  chave,
-                'email':    u.get('email', ''),
-                'telefone': u.get('telefone', ''),
-            })
             return
 
         # /auth/perfil/atualizar — atualiza telefone e/ou email do usuário logado
