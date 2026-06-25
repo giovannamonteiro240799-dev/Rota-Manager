@@ -3682,13 +3682,22 @@ function initArcgisMap() {
  // Cada um vira um marker mapbox colorido (laranja/roxo/...); clicar nele
  // move o pin azul "meu voto" para essa posição. stopPropagation evita
  // que o clique também dispare o listener genérico de "clique no mapa".
+ // OBS: ao usar elemento customizado (element), a opção color do Mapbox é
+ // ignorada — por isso desenhamos o SVG do pin manualmente abaixo.
  const CORES_VOTO_A = ['#f59e0b', '#a855f7', '#ec4899', '#06b6d4'];
  (VOTOS_EXISTENTES || []).slice(0, 4).forEach((v, i) => {
    const cor = CORES_VOTO_A[i % CORES_VOTO_A.length];
    const el = document.createElement('div');
    el.style.cursor = 'pointer';
+   el.style.width = '30px';
+   el.style.height = '40px';
    el.title = 'Votado por ' + v.votos + ' pessoa(s)';
-   const m = new mapboxgl.Marker({ element: el, color: cor })
+   el.innerHTML = \`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 36 48">
+     <path d="M18 0 C8.06 0 0 8.06 0 18 C0 31.5 18 48 18 48 C18 48 36 31.5 36 18 C36 8.06 27.94 0 18 0 Z" fill="\${cor}" stroke="#0b1120" stroke-width="1.5"/>
+     <circle cx="18" cy="20" r="6.5" fill="white"/>
+     <circle cx="18" cy="20" r="3.5" fill="\${cor}"/>
+   </svg>\`;
+   const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
      .setLngLat([v.lon, v.lat])
      .addTo(arcgisMap);
    el.addEventListener('click', (ev) => {
