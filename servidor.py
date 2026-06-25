@@ -27,6 +27,7 @@ import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit, parse_qs
 
 HOST           = os.environ.get('HOST', '0.0.0.0')
 PORT           = int(os.environ.get('PORT', 8792))
@@ -667,6 +668,38 @@ def banco_coords_apagar(endereco: str) -> tuple[bool, str]:
     del banco[chave]
     banco_coords_salvar(banco)
     return True, "Entrada removida do banco."
+
+
+def banco_coords_clusters_endereco(endereco: str) -> dict:
+    """Retorna os clusters de votos de um endereço específico, para o front
+    desenhar os pins alternativos no mapa (a coord vencedora + a(s)
+    divergente(s), cada uma com seu próprio pin e contagem de votos).
+
+    Retorna {"existe": bool, "clusters": [{"lat","lon","votos","usuarios"}],
+    "meu_voto": {"lat","lon"} | None} — "meu_voto" é a posição que o
+    `usuario` informado já votou antes (se houver), para o front saber
+    qual pin já é "o seu" ao reabrir o mapa."""
+    chave = _normalizar_endereco(endereco)
+    banco = banco_coords_carregar()
+    entrada = banco.get(chave)
+    if not entrada:
+        return {"existe": False, "clusters": []}
+
+    votos = entrada.get("votos") or []
+    if not votos and entrada.get("lat") is not None:
+        # Entrada legada sem lista de votos — trata como 1 voto único.
+        votos = [{"lat": entrada["lat"], "lon": entrada["lon"], "usuario": "(legado)"}]
+
+    clusters = _banco_clusterizar_votos(votos)
+    saida = []
+    for c in clusters:
+        saida.append({
+            "lat": round(c["lat"], 6),
+            "lon": round(c["lon"], 6),
+            "votos": len(c["votos"]),
+            "usuarios": [v.get("usuario", "?") for v in c["votos"]],
+        })
+    return {"existe": True, "clusters": saida}
 
 
 def banco_coords_aplicar(rows: list) -> list:
@@ -1612,6 +1645,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 for k, v in sorted(banco.items())
             ]
             self.send_json({'ok': True, 'total': len(entradas), 'entradas': entradas})
+
+        # /coords/votos?endereco=... — retorna os clusters de votos (coord
+        # vencedora + divergentes) de UM endereço, para o front desenhar
+        # os pins alternativos no mapa de seleção de coordenada.
+        elif self.path.startswith('/coords/votos'):
+            sess = self._sessao_ou_401()
+            if sess is None:
+                return
+            qs = parse_qs(urlsplit(self.path).query)
+            endereco = (qs.get('endereco') or [''])[0]
+            info = banco_coords_clusters_endereco(endereco)
+            self.send_json({'ok': True, **info})
 
         # /admin/usuarios — lista todos os usuários cadastrados (somente admin)
         elif self.path == '/admin/usuarios':

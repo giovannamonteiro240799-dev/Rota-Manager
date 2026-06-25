@@ -3142,7 +3142,7 @@ function mostrarVotoToast(msg, confianca, votosEleita, totalVotos) {
   }, 5000);
 }
 
-function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
+async function abrirMapa(coord, endReformado, endOriginal, rowIdx) {
 const lat = (() => {
 if (!coord) return -16.7159;
 const p = coord.split(',');
@@ -3154,8 +3154,26 @@ const p = coord.split(',');
 return parseFloat(p[1]) || -49.2925;
 })();
 
+// Busca os votos já registrados para este endereço — usados para desenhar
+// pins extras (coordenadas que outras pessoas já votaram), além do pin
+// azul "meu voto" que o usuário arrasta livremente.
+const targetRow = _allRows[rowIdx];
+const enderecoParaBanco = targetRow ? (targetRow.address || '') : '';
+let votosExistentes = [];
+if (enderecoParaBanco) {
+try {
+const r = await fetch(SERVER + '/coords/votos?endereco=' + encodeURIComponent(enderecoParaBanco), {
+headers: { ...authHeaders() }
+});
+const j = await r.json();
+if (j.ok && Array.isArray(j.clusters)) votosExistentes = j.clusters;
+} catch (err) {
+console.warn('[BANCO] Não foi possível carregar votos existentes:', err);
+}
+}
+
 const HERE_KEY = 'P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M';
-const html = getMapHtml(HERE_KEY, lat, lng, endReformado, endOriginal, rowIdx);
+const html = getMapHtml(HERE_KEY, lat, lng, endReformado, endOriginal, rowIdx, votosExistentes);
 
 const win = window.open('', '_blank', 'width=1280,height=860');
 if (!win) { alert('Permita pop-ups para este site e tente novamente.'); return; }
@@ -3164,7 +3182,7 @@ win.document.write(html);
 win.document.close();
 }
 
-function getMapHtml(hereKey, initLat, initLng, endReformado, endOriginal, rowIdx) {
+function getMapHtml(hereKey, initLat, initLng, endReformado, endOriginal, rowIdx, votosExistentes) {
 return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -3356,6 +3374,11 @@ const ROW_IDX  = ${rowIdx};
 let currentLat = ${initLat};
 let currentLng = ${initLng};
 
+// Coordenadas já votadas por outras pessoas para este endereço (vindas do
+// banco de votos). Cada item: { lat, lon, votos, usuarios }. Usadas para
+// desenhar pins extras (laranja/roxo) ao lado do pin azul "meu voto".
+const VOTOS_EXISTENTES = ${JSON.stringify(votosExistentes || [])};
+
 // ── Atualiza display de coordenadas ────────────────────────────────────
 function updateDisplay(lat, lng) {
  document.getElementById('pin-lat').textContent = lat.toFixed(6);
@@ -3414,15 +3437,38 @@ const marker  = new H.map.Marker({ lat: currentLat, lng: currentLng }, { icon: p
 marker.draggable = true;
 hereMap.addObject(marker);
 
+// ── Pins das coordenadas já votadas por outras pessoas ─────────────────
+// Cada cluster de voto vira um pin colorido (laranja = 1º lugar, roxo = 2º
+// lugar em diante) e clicável: clicar nele move o pin azul "meu voto"
+// para aquela posição. O usuário ainda pode arrastar/clicar em qualquer
+// outro ponto do mapa para escolher um lugar novo.
+const CORES_VOTO = ['#f59e0b', '#a855f7', '#ec4899', '#06b6d4'];
+function svgPinVoto(cor) {
+ return \`<svg xmlns="http://www.w3.org/2000/svg" width="34" height="46" viewBox="0 0 36 48">
+  <path d="M18 0 C8.06 0 0 8.06 0 18 C0 31.5 18 48 18 48 C18 48 36 31.5 36 18 C36 8.06 27.94 0 18 0 Z" fill="\${cor}" stroke="#0b1120" stroke-width="1.5"/>
+  <circle cx="18" cy="20" r="6.5" fill="white"/>
+  <circle cx="18" cy="20" r="3.5" fill="\${cor}"/>
+ </svg>\`;
+}
+const votoMarkersHere = [];
+(VOTOS_EXISTENTES || []).slice(0, 4).forEach((v, i) => {
+ const cor = CORES_VOTO[i % CORES_VOTO.length];
+ const icon = new H.map.Icon('data:image/svg+xml;base64,' + btoa(svgPinVoto(cor)), { size:{w:34,h:46}, anchor:{x:17,y:46} });
+ const m = new H.map.Marker({ lat: v.lat, lng: v.lon }, { icon, volatility: true });
+ m._votoInfo = v;
+ hereMap.addObject(m);
+ votoMarkersHere.push(m);
+});
+
 hereMap.addEventListener('dragstart', e => { if (e.target instanceof H.map.Marker) behavior.disable(); });
 hereMap.addEventListener('drag', e => {
- if (e.target instanceof H.map.Marker) {
+ if (e.target === marker) {
    const pos = hereMap.screenToGeo(e.currentPointer.viewportX, e.currentPointer.viewportY);
    marker.setGeometry(pos);
  }
 });
 hereMap.addEventListener('dragend', e => {
- if (e.target instanceof H.map.Marker) {
+ if (e.target === marker) {
    behavior.enable();
    const pos = marker.getGeometry();
    updateDisplay(pos.lat, pos.lng);
@@ -3431,7 +3477,19 @@ hereMap.addEventListener('dragend', e => {
  }
 });
 hereMap.addEventListener('tap', e => {
- if (e.target instanceof H.map.Marker) return;
+ if (e.target === marker) return;
+ // Clique num pin de voto existente → move "meu voto" para essa posição.
+ if (votoMarkersHere.includes(e.target)) {
+   const pos = e.target.getGeometry();
+   marker.setGeometry(pos);
+   updateDisplay(pos.lat, pos.lng);
+   updateGoogle(pos.lat, pos.lng);
+   updateArcgis(pos.lat, pos.lng);
+   const info = e.target._votoInfo;
+   document.getElementById('status-bar').textContent =
+     '📍 Você selecionou uma localização já votada por ' + info.votos + ' pessoa(s).';
+   return;
+ }
  const pos = hereMap.screenToGeo(e.currentPointer.viewportX, e.currentPointer.viewportY);
  marker.setGeometry(pos);
  updateDisplay(pos.lat, pos.lng);
@@ -3470,7 +3528,35 @@ window.initGoogleMap = function() {
    position: { lat: currentLat, lng: currentLng },
    map: googleMap,
    draggable: true,
-   title: 'Posição',
+   title: 'Seu voto',
+ });
+
+ // ── Pins das coordenadas já votadas por outras pessoas ───────────────
+ // Ícone redondo colorido (laranja/roxo/...) — clicar nele move o pin
+ // vermelho "meu voto" para essa posição, sincronizando com o HERE.
+ const CORES_VOTO_G = ['#f59e0b', '#a855f7', '#ec4899', '#06b6d4'];
+ (VOTOS_EXISTENTES || []).slice(0, 4).forEach((v, i) => {
+   const cor = CORES_VOTO_G[i % CORES_VOTO_G.length];
+   const m = new google.maps.Marker({
+     position: { lat: v.lat, lng: v.lon },
+     map: googleMap,
+     title: 'Votado por ' + v.votos + ' pessoa(s)',
+     icon: {
+       path: google.maps.SymbolPath.CIRCLE,
+       scale: 9,
+       fillColor: cor,
+       fillOpacity: 1,
+       strokeColor: '#0b1120',
+       strokeWeight: 2,
+     },
+     zIndex: 5,
+   });
+   m.addListener('click', () => {
+     googleMarker.setPosition({ lat: v.lat, lng: v.lon });
+     sincronizarParaHere(v.lat, v.lon);
+     document.getElementById('status-bar').textContent =
+       '📍 Você selecionou uma localização já votada por ' + v.votos + ' pessoa(s).';
+   });
  });
 
  // ── CLIQUE no mapa → move pin Google + atualiza HERE ────────────────
@@ -3583,13 +3669,34 @@ function initArcgisMap() {
 
  arcgisMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
- arcgisMarker = new mapboxgl.Marker({ color: '#a855f7', draggable: true })
+ arcgisMarker = new mapboxgl.Marker({ color: '#3b82f6', draggable: true })
    .setLngLat([currentLng, currentLat])
    .addTo(arcgisMap);
 
  arcgisMarker.on('dragend', () => {
    const pos = arcgisMarker.getLngLat();
    moveMap(pos.lat, pos.lng, pos.lat.toFixed(6) + ', ' + pos.lng.toFixed(6));
+ });
+
+ // ── Pins das coordenadas já votadas por outras pessoas ───────────────
+ // Cada um vira um marker mapbox colorido (laranja/roxo/...); clicar nele
+ // move o pin azul "meu voto" para essa posição. stopPropagation evita
+ // que o clique também dispare o listener genérico de "clique no mapa".
+ const CORES_VOTO_A = ['#f59e0b', '#a855f7', '#ec4899', '#06b6d4'];
+ (VOTOS_EXISTENTES || []).slice(0, 4).forEach((v, i) => {
+   const cor = CORES_VOTO_A[i % CORES_VOTO_A.length];
+   const el = document.createElement('div');
+   el.style.cursor = 'pointer';
+   el.title = 'Votado por ' + v.votos + ' pessoa(s)';
+   const m = new mapboxgl.Marker({ element: el, color: cor })
+     .setLngLat([v.lon, v.lat])
+     .addTo(arcgisMap);
+   el.addEventListener('click', (ev) => {
+     ev.stopPropagation();
+     moveMap(v.lat, v.lon, v.lat.toFixed(6) + ', ' + v.lon.toFixed(6));
+     document.getElementById('status-bar').textContent =
+       '📍 Você selecionou uma localização já votada por ' + v.votos + ' pessoa(s).';
+   });
  });
 
  arcgisMap.on('load', () => {
