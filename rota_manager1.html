@@ -2485,14 +2485,7 @@ function loadDraftIfExists() {
     if (!raw) return false;
     const draft = JSON.parse(raw);
     if (!draft || !Array.isArray(draft.rows) || !draft.rows.length) return false;
-    const ageMin = Math.round((Date.now() - (draft.ts || 0)) / 60000);
-    const ago = ageMin < 60
-      ? `${ageMin} min atrás`
-      : `${Math.round(ageMin/60)}h atrás`;
-    if (!confirm(`⚠️ Encontrei alterações não salvas da rota (${ago}).\nDeseja restaurar?`)) {
-      clearDraft();
-      return false;
-    }
+    // Restaura silenciosamente — sem perguntar
     _headers = draft.headers || [];
     _colLat  = draft.colLat  ?? null;
     _colLon  = draft.colLon  ?? null;
