@@ -103,40 +103,53 @@ def _parse_qd_lt(addr: str):
 
 
 def _extract_street_number(addr: str):
+    """Extrai o número de logradouro de um endereço.
+
+    Funciona em dois modos:
+    1. Ruas com código numérico no nome: "RUA 1041, 118 ..."  → captura o número
+       após o prefixo+código via regex posicional.
+    2. Ruas com nome por extenso: "Avenida Circular, 283, ..."  → captura o
+       primeiro token numérico após a primeira vírgula, ignorando S/N e
+       números de apt/sala que venham depois.
+    """
     u = strip_accents(addr.upper().strip())
+
+    # Modo 1: prefixo seguido direto de código numérico (ex: "RUA 1041, 118")
     street_re = re.match(
-        r'^((?:RUA|AVENIDA|AV\.?|PRACA|PRAÇA|ALAMEDA|TRAVESSA|R\.?)'
-        r'\s+(?:C[-\s]?\d+|T[-\s]?\d+|[A-Z]\s*\d+|\d+))'
-        r'(.*)',
+        r'^(?:RUA|AVENIDA|AV\.?|PRACA|PRAÇA|ALAMEDA|TRAVESSA|R\.?)'
+        r'\s+(?:C[-\s]?\d+|T[-\s]?\d+|[A-Z]\s*\d+|\d+)'
+        r'\s*,\s*(.*)',
         u
     )
+    if street_re:
+        rest = street_re.group(1)
+        first_token = rest.strip().split()[0] if rest.strip() else ''
+        if re.match(r'^S/?N$', first_token):
+            return None
+        rest_clean = re.sub(
+            r'\b(?:APT|APTO|AP|APARTAMENTO|SALA|UNID|CASA)\s*\.?\s*\d+\b',
+            '', rest
+        )
+        all_nums = re.findall(r'\b(\d+)\b', rest_clean)
+        candidates = [n for n in all_nums if n not in ('0',)]
+        if not candidates:
+            return None
+        if len(candidates[0]) >= 2:
+            return candidates[0]
+        longer = [n for n in candidates[1:] if len(n) >= 2]
+        return longer[0] if longer else candidates[0]
 
-    if not street_re:
+    # Modo 2: rua com nome por extenso → primeiro campo após a vírgula
+    parts = u.split(',')
+    if len(parts) < 2:
         return None
-
-    rest = street_re.group(2)
-    first_token = rest.strip().lstrip(',').strip().split()[0] if rest.strip() else ''
-    if re.match(r'^S/?N$', first_token):
+    token = parts[1].strip().split()[0] if parts[1].strip() else ''
+    if re.match(r'^S/?N$', token):
         return None
-
-    rest_clean = re.sub(
-        r'\b(?:APT|APTO|AP|APARTAMENTO|SALA|UNID|CASA)\s*\.?\s*\d+\b',
-        '',
-        rest
-    )
-    all_nums = re.findall(r'\b(\d+)\b', rest_clean)
-    candidates = [n for n in all_nums if n not in ('0',)]
-
-    if not candidates:
-        return None
-    if len(candidates[0]) >= 2:
-        return candidates[0]
-
-    longer = [n for n in candidates[1:] if len(n) >= 2]
-    if longer:
-        return longer[0]
-
-    return candidates[0]
+    m = re.match(r'^(\d+)$', token)
+    if m and len(m.group(1)) >= 2:
+        return m.group(1)
+    return None
 
 
 def _extract_bld_name(addr: str):
@@ -262,6 +275,13 @@ def group_rows_p1(rows, threshold=0.72):
             continue
 
         if (num_i is not None and not kj_has_detail) or (num_j is not None and not ki_has_detail):
+            continue
+
+        # Guarda extra: compara número direto do endereço bruto,
+        # evita agrupar "Rua X, 290" com "Rua X, 546" quando std_key falhou em extrair o número
+        raw_num_i = _extract_street_number(rows[i]['address'])
+        raw_num_j = _extract_street_number(rows[j]['address'])
+        if raw_num_i is not None and raw_num_j is not None and raw_num_i != raw_num_j:
             continue
 
         same_bld = bldnames[i] and bldnames[j] and bldnames[i] == bldnames[j]
