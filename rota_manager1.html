@@ -2457,6 +2457,61 @@ return { rows, headers, colAddr, colLat, colLon, colCoor };
 // ══════════════════════════════════════════════════════════
 
 let _allRows = [];
+
+// ── Auto-save do estado da rota no localStorage ─────────────────────────────
+const _ROTA_DRAFT_KEY = 'rota_manager_draft';
+
+function autoSaveDraft() {
+  try {
+    const draft = {
+      ts: Date.now(),
+      headers: _headers,
+      colLat: _colLat,
+      colLon: _colLon,
+      colCoor: _colCoor,
+      rows: _allRows,
+    };
+    localStorage.setItem(_ROTA_DRAFT_KEY, JSON.stringify(draft));
+  } catch(e) { /* quota ou privado — ignora */ }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(_ROTA_DRAFT_KEY); } catch(e) {}
+}
+
+function loadDraftIfExists() {
+  try {
+    const raw = localStorage.getItem(_ROTA_DRAFT_KEY);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    if (!draft || !Array.isArray(draft.rows) || !draft.rows.length) return false;
+    const ageMin = Math.round((Date.now() - (draft.ts || 0)) / 60000);
+    const ago = ageMin < 60
+      ? `${ageMin} min atrás`
+      : `${Math.round(ageMin/60)}h atrás`;
+    if (!confirm(`⚠️ Encontrei alterações não salvas da rota (${ago}).\nDeseja restaurar?`)) {
+      clearDraft();
+      return false;
+    }
+    _headers = draft.headers || [];
+    _colLat  = draft.colLat  ?? null;
+    _colLon  = draft.colLon  ?? null;
+    _colCoor = draft.colCoor ?? null;
+    _allRows = sortByAddress(normalizarLinhas(draft.rows));
+    renderTable(_allRows);
+    updateStats(_allRows);
+    document.getElementById('file-badge').innerHTML =
+      `📄 <b>rota_processada_final.xlsx</b> — ${_allRows.length} endereços <span style="color:var(--amber);font-size:.75rem">⚠ rascunho restaurado</span>`;
+    document.getElementById('file-badge').classList.add('show');
+    document.getElementById('table-section').classList.add('show');
+    document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'flex';
+    document.getElementById('bottom-nav').classList.add('show');
+    document.body.classList.add('has-bottom-nav');
+    return true;
+  } catch(e) { return false; }
+}
+
 let _fileName = '';
 let _headers = [];
 let _colLat = null;
@@ -2729,6 +2784,7 @@ _allRows.splice(idx + 1, 0, novaLinha);
 const q = document.getElementById('filter-input').value.trim();
 if (q) filtrarTabela(); else renderTable(_allRows);
 updateStats(_allRows);
+autoSaveDraft();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2845,6 +2901,7 @@ atualizarFab();
 const q = document.getElementById('filter-input').value.trim();
 if (q) filtrarTabela(); else renderTable(_allRows);
 updateStats(_allRows);
+autoSaveDraft();
 }
 
 function escHtml(s) {
@@ -2911,6 +2968,7 @@ r.do_banco = true;
 const q = document.getElementById('filter-input').value.trim();
 if (q) filtrarTabela(); else renderTable(_allRows);
 updateStats(_allRows);
+autoSaveDraft();
 // Registra a coordenada no banco
 if (enderecoParaBanco) {
   fetch(SERVER + '/coords/salvar', {
@@ -3783,6 +3841,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
 // 4) Popula a tabela
     _headers = dado.headers || [];
     _allRows = sortByAddress(normalizarLinhas(dado.rows || []));
+    clearDraft(); // dados frescos do servidor — descarta rascunho
 
     // Detecta índices de lat/lon/coord nos headers recebidos
     const hUp = _headers.map(x => String(x||'').toUpperCase().trim());
@@ -3806,6 +3865,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
     document.getElementById('bottom-nav').classList.add('show');
     document.body.classList.add('has-bottom-nav');
     mostrarRotaNoApp(dado.rows || [], dado.headers || [], 'rota_processada_final.xlsx');
+    clearDraft(); // dados frescos — descarta rascunho
 
 } catch(err) {
 hideLoading();
@@ -5151,7 +5211,7 @@ document.getElementById('profile-dd-avatar').textContent = inicial;
 document.getElementById('profile-dd-name').textContent   = user;
 document.getElementById('profile-val-usuario').textContent = user;
 document.getElementById('btn-admin').style.display = isAdminUser() ? '' : 'none';
-if (!_allRows.length) checarServidor();
+if (!_allRows.length) { if (!loadDraftIfExists()) checarServidor(); } else checarServidor();
 confirmarPagamentoSeRetornouDoCheckout();
 carregarPerfilUsuario();
 }
