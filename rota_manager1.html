@@ -2930,6 +2930,7 @@ function loadDraftIfExists() {
     document.getElementById('file-badge').classList.add('show');
     document.getElementById('table-section').classList.add('show');
     document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('import-page').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
     document.getElementById('bottom-nav').classList.add('show');
     document.body.classList.add('has-bottom-nav');
@@ -2967,6 +2968,7 @@ function showLoading(msg) {
 document.getElementById('loading-msg').textContent = msg;
 document.getElementById('drop-zone').style.display = 'none';
 document.getElementById('drop-zone-sem-acesso').style.display = 'none';
+document.getElementById('import-page').style.display = 'none';
 document.getElementById('loading').classList.add('show');
 document.getElementById('table-section').classList.remove('show');
 document.getElementById('stats-bar').classList.remove('show');
@@ -4134,6 +4136,7 @@ function aplicarVisibilidadeDropZone() {
   // Só decide a UI quando já existe rota carregada nenhuma e o drop-zone está em jogo.
   // mostrarRotaNoApp()/processarComServidor() escondem ambos os blocos quando há tabela.
   const semAcesso = _serverOnline && !_temAcesso;
+  document.getElementById('import-page').style.display = 'block';
   document.getElementById('drop-zone').style.display          = semAcesso ? 'none' : 'flex';
   document.getElementById('drop-zone-sem-acesso').style.display = semAcesso ? 'flex' : 'none';
 }
@@ -4293,6 +4296,7 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
     document.getElementById('file-badge').classList.add('show');
     document.getElementById('table-section').classList.add('show');
     document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('import-page').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
     document.getElementById('bottom-nav').classList.add('show');
     document.body.classList.add('has-bottom-nav');
@@ -4353,6 +4357,7 @@ function mostrarRotaNoApp(rows, headers, nomeArquivo) {
   document.getElementById('file-badge').classList.add('show');
   document.getElementById('table-section').classList.add('show');
   document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('import-page').style.display = 'none';
   document.getElementById('toolbar').style.display = 'flex';
   document.getElementById('bottom-nav').classList.add('show');
   document.body.classList.add('has-bottom-nav');
