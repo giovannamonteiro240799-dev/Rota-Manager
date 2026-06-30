@@ -1345,14 +1345,14 @@ async def coords_apagar(request: Request):
     return ok_json({"ok": ok, "msg": msg})
 
 @app.post("/upload")
-async def upload(request: Request, file: UploadFile = File(...)):
+async def upload(request: Request, arquivo: UploadFile = File(...)):
     """
     Recebe o arquivo xlsx via multipart/form-data.
     FastAPI + python-multipart fazem o parsing automaticamente —
     sem mais parsing manual de boundary.
     """
     sess = _sessao_com_acesso_ou_403(request)
-    contents = await file.read()
+    contents = await arquivo.read()
     if len(contents) <= 4:
         return err_json("Arquivo vazio ou inválido.")
     Path(ARQ_ENTRADA).write_bytes(contents)
