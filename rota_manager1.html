@@ -965,6 +965,7 @@ header .badge b { color: var(--accent2); }
   @media (max-width: 640px) {
     #hist-panel { width: 100vw; }
     .btn-hist span.label { display: none; }
+    #btn-theme-toggle-header { display: none; }
   }
 .toolbar {
 background: var(--steel);
@@ -2101,7 +2102,7 @@ display: flex; align-items: center;
     left: calc(-1 * var(--sidebar-width));
     top: 0; bottom: 0;
     transition: left var(--transition);
-    z-index: 200;
+    z-index: 410;
   }
   #sidebar.mobile-open { left: 0; }
   .sidebar-collapse-btn { display: none; }
@@ -2397,7 +2398,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 </aside>
 
 <!-- mobile overlay -->
-<div id="sidebar-overlay" onclick="closeMobileSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:190;backdrop-filter:blur(2px)"></div>
+<div id="sidebar-overlay" onclick="closeMobileSidebar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:405;backdrop-filter:blur(2px)"></div>
 
 <!-- ===================== MAIN CONTENT ===================== -->
 <div id="main-content">
