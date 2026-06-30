@@ -234,6 +234,31 @@ input, select, textarea { font: inherit; color: inherit; }
 #sidebar.collapsed .sidebar-user-info { opacity: 0; width: 0; }
 .sidebar-version { text-align: center; font-size: 10px; color: rgba(255,255,255,0.18); margin-top: 6px; }
 
+.sidebar-footer-btn {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 7px;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.55);
+  font-size: 11px; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.sidebar-footer-btn:hover { color: #fff; border-color: var(--accent2); }
+.sidebar-footer-btn.danger { color: rgba(239,68,68,0.75); }
+.sidebar-footer-btn.danger:hover { color: #ef4444; border-color: #ef4444; }
+
+[data-theme="light"] .sidebar-footer-btn {
+  background: rgba(0,0,0,0.045);
+  border: 1px solid var(--border);
+  color: #334155;
+}
+[data-theme="light"] .sidebar-footer-btn:hover { color: #0f172a; border-color: var(--accent2); }
+[data-theme="light"] .sidebar-footer-btn.danger { color: #dc2626; }
+[data-theme="light"] .sidebar-footer-btn.danger:hover { color: #b91c1c; border-color: #dc2626; }
+
 /* ===================== MAIN CONTENT ===================== */
 #main-content {
   flex: 1;
@@ -2217,7 +2242,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 }
 [data-theme="light"] .sidebar-user-name { color: var(--text); }
 [data-theme="light"] .sidebar-user-role { color: var(--muted); }
-[data-theme="light"] .sidebar-version { color: #cbd5e1; }
+[data-theme="light"] .sidebar-version { color: #94a3b8; }
 [data-theme="light"] .sidebar-collapse-btn {
   background: #fff;
   border: 1px solid var(--border);
@@ -2406,11 +2431,11 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       </div>
     </button>
     <div style="display:flex;gap:6px;margin-top:8px;padding:0 2px">
-      <button onclick="toggleTheme()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px;border-radius:var(--radius-md);background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.55);font-size:11px;font-weight:500;cursor:pointer;transition:all var(--transition)" id="theme-toggle-btn">
+      <button onclick="toggleTheme()" class="sidebar-footer-btn" id="theme-toggle-btn">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <span id="theme-toggle-label">Claro</span>
       </button>
-      <button onclick="fazerLogout()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px;border-radius:var(--radius-md);background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:rgba(239,68,68,0.65);font-size:11px;font-weight:500;cursor:pointer;transition:all var(--transition)">
+      <button onclick="fazerLogout()" class="sidebar-footer-btn danger">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
         <span>Sair</span>
       </button>
