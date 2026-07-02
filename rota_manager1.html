@@ -3183,6 +3183,7 @@ function autoSaveDraft() {
       colLon: _colLon,
       colCoor: _colCoor,
       rows: _allRows,
+      fileName: _fileName,
     };
     localStorage.setItem(_ROTA_DRAFT_KEY, JSON.stringify(draft));
   } catch(e) { /* quota ou privado — ignora */ }
@@ -3204,6 +3205,7 @@ function loadDraftIfExists() {
     _colLon  = draft.colLon  ?? null;
     _colCoor = draft.colCoor ?? null;
     _allRows = sortByAddress(normalizarLinhas(draft.rows));
+    _fileName = draft.fileName || _fileName;
     renderTable(_allRows);
     updateStats(_allRows);
     document.getElementById('file-badge').innerHTML =
@@ -4942,7 +4944,14 @@ dataOut.push([row.lat || '', row.lon || '', celula]);
 const ws = XLSX.utils.aoa_to_sheet(dataOut);
 const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, ws, "Rotas Consolidadas");
-XLSX.writeFile(wb, modo === 'detailed' ? "rota_atualizada_detalhada.xlsx" : "rota_atualizada.xlsx");
+
+// Nome do arquivo exportado = nome do arquivo importado (sem extensão) + "_CIRCUIT"
+// Ex.: "21-06-2026 MARCOS VINICIUS FERREIRA GOMES.xlsx" -> "21-06-2026 MARCOS VINICIUS FERREIRA GOMES_CIRCUIT.xlsx"
+const baseName = String(_fileName || 'rota')
+  .replace(/\.(xlsx|xls|csv)$/i, '')
+  .trim() || 'rota';
+const sufixoDetalhado = modo === 'detailed' ? '_DETALHADO' : '';
+XLSX.writeFile(wb, `${baseName}_CIRCUIT${sufixoDetalhado}.xlsx`);
 
 btn.classList.add('bn-sucesso');
 label.textContent = "Exportado!";
