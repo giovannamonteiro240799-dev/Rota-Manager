@@ -5392,7 +5392,7 @@ function scanRenderResultado(matches) {
   const top = matches[0];
   const topRow = top.item;
   const topSeq = topRow.stop || topRow.group_stops || '—';
-  const topAddr = topRow.group_label || topRow.address || topRow.endereco_original || '';
+  const topAddr = topRow.endereco_original || topRow.address || topRow.group_label || '';
   const topPct = Math.round(Math.min(top.pct, 1) * 100);
 
   melhor.innerHTML =
@@ -5409,7 +5409,7 @@ function scanRenderResultado(matches) {
     ? '<h3>Outras possibilidades</h3>' + outros.map(m => {
         const row = m.item;
         const seq = row.stop || row.group_stops || '—';
-        const addr = row.group_label || row.address || row.endereco_original || '';
+        const addr = row.endereco_original || row.address || row.group_label || '';
         const pct = Math.round(m.pct * 100);
         return `<div class="scan-alt-item" onclick="scanIrParaLinha('${row._cid}')">
           <div class="scan-alt-seq">#${escHtml(String(seq))}</div>
