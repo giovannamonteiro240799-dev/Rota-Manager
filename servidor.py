@@ -44,6 +44,7 @@ ARQ_ENTRADA    = "rota.xlsx"
 ARQ_PROCESSADO = "rota_processada_final.xlsx"
 ARQ_VALIDADO   = "rota_validada_here.xlsx"
 TRATAMENTO_PY  = "tratamento_dados.py"
+ANJUN_SCRIPT   = "csv_para_rota_xlsx.py"
 
 HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M")
 HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
@@ -1416,6 +1417,60 @@ async def scan_ocr(request: Request):
         texto = annotations[0].get("description", "")
 
     return ok_json({"ok": True, "texto": texto})
+
+@app.post("/anjun/converter")
+async def anjun_converter(request: Request, arquivo: UploadFile = File(...)):
+    """
+    Recebe um CSV (formato delivery_list, sem sequência) e devolve o .xlsx
+    já geocodificado (Sequence/Address/.../Lat/Lon/Geo Fonte), gerado pelo
+    csv_para_rota_xlsx.py. Requer só login básico — é uma ferramenta
+    separada do pipeline principal, não consome crédito de importação.
+    """
+    sess = _sessao_ou_401(request)
+
+    if not Path(ANJUN_SCRIPT).exists():
+        return err_json(f"{ANJUN_SCRIPT} não encontrado na pasta do servidor.")
+
+    contents = await arquivo.read()
+    if len(contents) <= 4:
+        return err_json("Arquivo vazio ou inválido.")
+
+    uid = sess["user_id"]
+    sufixo_original = Path(arquivo.filename or "entrada.csv").suffix or ".csv"
+    entrada_path = DATA_DIR / f"anjun_entrada_{uid}{sufixo_original}"
+    saida_path   = DATA_DIR / f"anjun_saida_{uid}.xlsx"
+    entrada_path.write_bytes(contents)
+
+    print(f"  [ANJUN] {entrada_path.name} salvo ({len(contents)} bytes) — usuário: {sess['usuario']}")
+
+    try:
+        env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY}
+        result = subprocess.run(
+            [sys.executable, ANJUN_SCRIPT, str(entrada_path), str(saida_path)],
+            capture_output=True, text=True, timeout=600, env=env_here,
+        )
+        if result.returncode != 0:
+            erro = result.stderr or result.stdout or "Erro desconhecido"
+            print(f"  [ANJUN] ❌ {erro}")
+            return err_json(erro)
+        if result.stdout:
+            print(result.stdout)
+    except subprocess.TimeoutExpired:
+        return err_json("Timeout: a geocodificação demorou mais que o esperado.")
+    except Exception as e:
+        print(f"  [ANJUN] ❌ {e}")
+        return err_json(str(e))
+
+    if not saida_path.exists():
+        return err_json("O script rodou mas não gerou o arquivo de saída.")
+
+    nome_saida = f"{Path(arquivo.filename or 'anjun').stem}_GEO.xlsx"
+    print(f"  [ANJUN] ✅ {nome_saida} pronto")
+    return FileResponse(
+        str(saida_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=nome_saida,
+    )
 
 @app.post("/pipeline")
 async def pipeline(request: Request):

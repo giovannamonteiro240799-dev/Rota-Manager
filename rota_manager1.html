@@ -713,6 +713,76 @@ header .badge b { color: var(--accent2); }
   }
   #scan-nada { text-align: center; padding: 10px 8px; color: var(--muted); font-size: 13px; }
 
+  /* ── Painel Anjun (CSV -> XLSX geocodificado) ── */
+  #anjun-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #anjun-overlay.show { display: flex; }
+  #anjun-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 400px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+  }
+  #anjun-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #anjun-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #anjun-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #anjun-header .close-btn:hover { color: var(--text); }
+  #anjun-body { flex: 1; overflow-y: auto; padding: 14px; }
+  #anjun-drop-area {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  #anjun-drop-hint { font-size: 12px; color: var(--muted); }
+  #anjun-file-name { font-size: 12px; color: var(--text); font-weight: 600; word-break: break-all; }
+  #anjun-status { font-size: 12px; color: var(--muted); margin-top: 12px; min-height: 16px; white-space: pre-line; }
+  #anjun-resultado {
+    display: none;
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+  #anjun-resultado.on { display: block; }
+  #anjun-resultado .btn { width: 100%; }
+  #anjun-info {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 14px;
+    line-height: 1.5;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
 
   /* ── Painel Histórico ── */
   #hist-overlay {
@@ -2560,6 +2630,10 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
       <span class="nav-label">Histórico</span>
     </button>
+    <button class="nav-item" id="snav-anjun" onclick="sidebarNav('anjun')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0l-4.5-4.5M12 16l4.5-4.5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      <span class="nav-label">Anjun</span>
+    </button>
     <button class="nav-item" id="snav-scan" onclick="sidebarNav('scan')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
       <span class="nav-label">Rota Scan</span>
@@ -2767,6 +2841,35 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 </div>
 
 <!-- ══ PAINEL ROTA SCAN (OCR) ══ -->
+<!-- ══ PAINEL ANJUN (CSV -> XLSX geocodificado) ══ -->
+<div id="anjun-overlay" onclick="fecharAnjun(event)">
+  <div id="anjun-panel">
+    <div id="anjun-header">
+      <span>📥</span>
+      <span class="title">Anjun</span>
+      <button class="close-btn" onclick="fecharAnjun()">✕</button>
+    </div>
+    <div id="anjun-body">
+      <div id="anjun-drop-area">
+        <div id="anjun-drop-hint">Envie o CSV da lista de entregas (delivery_list) pra gerar o xlsx já com a geolocalização organizada</div>
+        <div id="anjun-file-name"></div>
+        <button class="btn btn-primary" onclick="document.getElementById('anjun-file-input').click()">📄 Escolher arquivo</button>
+      </div>
+      <input type="file" id="anjun-file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="anjunArquivoSelecionado(event)">
+
+      <div id="anjun-status"></div>
+
+      <div id="anjun-resultado">
+        <button class="btn btn-primary" id="anjun-baixar-btn" onclick="anjunBaixarResultado()">⬇ Baixar XLSX geocodificado</button>
+      </div>
+
+      <div id="anjun-info">
+        Roda o <b>csv_para_rota_xlsx.py</b> no servidor: extrai o CEP de cada endereço, geocodifica (HERE, com Nominatim de fallback) e devolve o .xlsx pronto pra importar.
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="scan-overlay" onclick="fecharScan(event)">
   <div id="scan-panel">
     <div id="scan-header">
@@ -5299,6 +5402,80 @@ function fecharScan(e) {
   _fecharOverlayAnimado('scan-overlay', 'scan-panel', 'animate__slideOutRight');
 }
 
+// ── UI: painel Anjun (CSV -> XLSX geocodificado) ──────────────────────
+let _anjunBlobUrl = null;
+let _anjunNomeSaida = 'anjun_geo.xlsx';
+
+function abrirAnjun() {
+  _abrirOverlayAnimado('anjun-overlay', 'anjun-panel', 'animate__slideInRight');
+}
+
+function fecharAnjun(e) {
+  if (e && e.target !== document.getElementById('anjun-overlay')) return;
+  _fecharOverlayAnimado('anjun-overlay', 'anjun-panel', 'animate__slideOutRight');
+}
+
+async function anjunArquivoSelecionado(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+
+  if (!_serverOnline) {
+    alert('⚠️ Servidor não encontrado.\nRode servidor.py na mesma pasta e tente novamente.');
+    return;
+  }
+
+  document.getElementById('anjun-file-name').textContent = file.name;
+  document.getElementById('anjun-resultado').classList.remove('on');
+  if (_anjunBlobUrl) { URL.revokeObjectURL(_anjunBlobUrl); _anjunBlobUrl = null; }
+
+  const status = document.getElementById('anjun-status');
+  status.textContent = '🌍 Enviando e geocodificando... isso pode levar alguns segundos (respeita o rate limit do Nominatim quando a HERE não acha o CEP).';
+
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file, file.name);
+    const r = await fetch(SERVER + '/anjun/converter', { method: 'POST', body: fd, headers: authHeaders() });
+
+    if (r.status === 401 || r.status === 403) {
+      let motivo = '';
+      try { motivo = (await r.json()).erro || ''; } catch (e) {}
+      status.textContent = '❌ ' + (motivo || 'Faça login pra usar essa função.');
+      return;
+    }
+    if (!r.ok) {
+      let detalhe = '';
+      try { detalhe = (await r.json()).erro || ''; } catch (e) {
+        try { detalhe = await r.text(); } catch (e2) {}
+      }
+      throw new Error(detalhe || `Falha ao processar (HTTP ${r.status})`);
+    }
+
+    const blob = await r.blob();
+    _anjunBlobUrl = URL.createObjectURL(blob);
+
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename="?([^"]+)"?/.exec(cd);
+    _anjunNomeSaida = m ? m[1] : file.name.replace(/\.(csv|xlsx|xls)$/i, '') + '_GEO.xlsx';
+
+    status.textContent = '✅ Pronto! Coordenadas organizadas.';
+    document.getElementById('anjun-resultado').classList.add('on');
+    anjunBaixarResultado(); // já dispara o download automaticamente
+  } catch (err) {
+    status.textContent = '❌ ' + err.message;
+  }
+}
+
+function anjunBaixarResultado() {
+  if (!_anjunBlobUrl) return;
+  const a = document.createElement('a');
+  a.href = _anjunBlobUrl;
+  a.download = _anjunNomeSaida;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function scanArquivoSelecionado(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -6623,6 +6800,7 @@ function sidebarNav(page) {
     case 'historico':   abrirHistorico(); break;
     case 'banco':       abrirBanco(); break;
     case 'scan':        abrirScan(); break;
+    case 'anjun':       abrirAnjun(); break;
     case 'assinatura':  abrirAssinatura(); break;
     case 'admin':       abrirAdmin(); break;
   }
