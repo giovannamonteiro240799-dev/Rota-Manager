@@ -5001,7 +5001,18 @@ async function tentarRestaurarUltimaRota() {
 //  Namespace "scan" para não colidir com nomes já usados no app.
 // ══════════════════════════════════════════════════════════
 
-const SCAN_PESOS = { rua: 60, numero: 40, apt: 35, cep: 50, setor: 20 };
+const SCAN_PESOS = { rua: 60, numero: 40, apt: 35, cep: 50, setor: 20, palavra: 45 };
+
+// Palavras genéricas demais para servirem de palavra-chave (apareceriam em
+// quase todo endereço e não ajudam a diferenciar um pacote do outro).
+const SCAN_STOPWORDS = new Set([
+  'rua','avenida','alameda','travessa','setor','bairro','quadra','lote',
+  'bloco','apto','aptox','apartamento','edificio','residencial','condominio',
+  'goiania','goias','brasil','destinatario','assinatura','recebedor',
+  'instrucao','instrucoes','remetente','duvidas','reclamacoes','retorno',
+  'origem','tratar','caso','pacote','entrega','entregador','numero','casa',
+  'predio','para','pelo','pela','pelos','pelas','pedido','cliente'
+]);
 let _scanFotoBase64 = null;
 let _scanIndexCache = null; // referência de _allRows já indexado
 
@@ -5084,6 +5095,14 @@ function scanExtrairCampos(raw) {
 
   m = txt.match(/\bsetor\s+([a-z\s]{3,30}?)(?:\s|,|$)/);
   if (m) campos.setor = scanNormalize(m[1]);
+
+  // Palavras-chave livres (ex.: nome de prédio/edifício, apelido de rua,
+  // qualquer termo que não seja genérico) — permite casar texto do pacote
+  // com o endereço mesmo quando não bate no padrão estrutural de rua/nº.
+  campos.palavras = new Set(
+    txt.split(/\s+/)
+      .filter(w => w.length >= 4 && !/^\d+$/.test(w) && !SCAN_STOPWORDS.has(w))
+  );
 
   [campos.rua, campos.numero, campos.apt, campos.cep, campos.setor]
     .filter(Boolean)
@@ -5179,6 +5198,16 @@ function scanScoreFieldMatch(q, item) {
     }
   }
 
+  if (q.palavras && q.palavras.size) {
+    maxScore += SCAN_PESOS.palavra;
+    let hits = 0;
+    q.palavras.forEach(p => { if (item._scanNorm.includes(p)) hits++; });
+    if (hits > 0) {
+      score += Math.round(SCAN_PESOS.palavra * (hits / q.palavras.size));
+      detalhes.push('palavra-chave ' + hits + '/' + q.palavras.size);
+    }
+  }
+
   const pct = maxScore > 0 ? score / maxScore : 0;
   return { score, maxScore, pct, detalhes };
 }
@@ -5188,7 +5217,8 @@ function scanBuscarSequencia(texto, topN) {
   scanBuildIndex(_allRows);
 
   const campos = scanExtrairCampos(texto);
-  if (!campos.rua && !campos.numero && !campos.apt && campos.numeros.size === 0) return [];
+  const temPalavras = campos.palavras && campos.palavras.size > 0;
+  if (!campos.rua && !campos.numero && !campos.apt && campos.numeros.size === 0 && !temPalavras) return [];
 
   const resultados = [];
   for (const item of _allRows) {
