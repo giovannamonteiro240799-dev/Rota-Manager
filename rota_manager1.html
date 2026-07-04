@@ -642,24 +642,77 @@ header .badge b { color: var(--accent2); }
     resize: vertical;
     font-family: inherit;
   }
-  #scan-buscar-btn { width: 100%; margin-top: 10px; }
+  #scan-buscar-row { display: flex; gap: 8px; margin-top: 10px; }
+  #scan-buscar-row .btn { flex: 1; }
   #scan-status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
-  #scan-resultados { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .scan-result-item {
+
+  .scan-campos-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .scan-campo-tag {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-size: 11px;
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 4px 8px;
+    color: var(--muted);
+  }
+  .scan-campo-tag b { color: var(--accent); font-weight: 700; }
+
+  #scan-resultado-card { display: none; margin-top: 18px; }
+  #scan-resultado-card.on { display: block; }
+  #scan-resultado-card h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 700;
+  }
+  .scan-carimbo {
+    border: 3px dashed var(--green);
+    border-radius: 14px;
+    color: var(--green);
+    transform: rotate(-1.5deg);
+    padding: 16px 10px;
+    text-align: center;
+    margin: 4px 0 14px;
     cursor: pointer;
+  }
+  .scan-carimbo .scan-carimbo-label {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .85;
+  }
+  .scan-carimbo .scan-carimbo-num {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-weight: 800; font-size: 52px; line-height: 1; margin: 4px 0;
+  }
+  .scan-match-addr { font-size: 13px; color: var(--text); text-align: center; padding: 0 6px 2px; }
+  .scan-match-detail {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px;
+  }
+  .scan-confidence { height: 5px; border-radius: 3px; background: var(--surface2); overflow: hidden; margin: 10px 4px 0; }
+  .scan-confidence i { display: block; height: 100%; background: var(--green); }
+
+  .scan-alt-list { margin-top: 16px; }
+  .scan-alt-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface2);
+    margin-bottom: 8px; cursor: pointer;
     transition: border-color .15s;
   }
-  .scan-result-item:hover { border-color: var(--accent2); }
-  .scan-result-item.top { border-color: var(--accent); background: rgba(245,158,11,.07); }
-  .scan-result-seq { font-size: 13px; font-weight: 700; color: var(--accent2); }
-  .scan-result-item.top .scan-result-seq { color: var(--accent); }
-  .scan-result-addr { font-size: 12px; color: var(--text); margin-top: 3px; word-break: break-word; }
-  .scan-result-pct { font-size: 10px; color: var(--muted); margin-top: 3px; }
-  #scan-empty { text-align: center; padding: 30px 20px; color: var(--muted); font-size: 13px; }
+  .scan-alt-item:hover { border-color: var(--accent2); }
+  .scan-alt-item .scan-alt-seq {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-weight: 700; font-size: 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    color: var(--text);
+  }
+  .scan-alt-item .scan-alt-addr { font-size: 12px; color: var(--muted); line-height: 1.4; flex: 1; word-break: break-word; }
+  .scan-alt-item .scan-alt-pct {
+    font-family: 'JetBrains Mono', monospace, monospace;
+    font-size: 11px; color: var(--accent); flex-shrink: 0;
+  }
+  #scan-nada { text-align: center; padding: 10px 8px; color: var(--muted); font-size: 13px; }
+
 
   /* ── Painel Histórico ── */
   #hist-overlay {
@@ -2733,12 +2786,18 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none" onchange="scanArquivoSelecionado(event)">
       <input type="file" id="scan-file-galeria" accept="image/*" style="display:none" onchange="scanArquivoSelecionado(event)">
 
-      <textarea id="scan-texto" placeholder="Texto reconhecido (editável)..."></textarea>
-      <button class="btn btn-primary" id="scan-buscar-btn" onclick="scanExecutarBusca()">🔎 Buscar sequência</button>
+      <textarea id="scan-texto" placeholder="Texto reconhecido (editável)..." onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); scanExecutarBusca(); }"></textarea>
+      <div class="scan-campos-tags" id="scan-campos-tags"></div>
+      <div id="scan-buscar-row">
+        <button class="btn btn-primary" id="scan-buscar-btn" onclick="scanExecutarBusca()">🔎 Buscar sequência</button>
+        <button class="btn" onclick="scanLimpar()">Limpar</button>
+      </div>
       <div id="scan-status"></div>
 
-      <div id="scan-resultados">
-        <div id="scan-empty">Nenhuma busca realizada ainda.</div>
+      <div id="scan-resultado-card">
+        <h3>Resultado</h3>
+        <div id="scan-melhor-resultado"></div>
+        <div class="scan-alt-list" id="scan-alt-list"></div>
       </div>
     </div>
   </div>
@@ -5279,13 +5338,28 @@ async function scanReconhecerTexto() {
   }
 }
 
+function scanRenderCamposTags(campos) {
+  const el = document.getElementById('scan-campos-tags');
+  const tags = [];
+  if (campos.ruaLabel || campos.rua) tags.push(['Rua', campos.ruaLabel || campos.rua]);
+  if (campos.numero) tags.push(['Nº', campos.numero]);
+  if (campos.apt && campos.apt !== campos.numero) tags.push(['Apto', campos.apt]);
+  if (campos.cep) tags.push(['CEP', campos.cep]);
+  if (campos.setor) tags.push(['Setor', campos.setor]);
+  el.innerHTML = tags.length
+    ? tags.map(([k, v]) => `<span class="scan-campo-tag"><b>${escHtml(k)}</b> ${escHtml(String(v))}</span>`).join('')
+    : '';
+}
+
 function scanExecutarBusca() {
   const status = document.getElementById('scan-status');
   const texto = document.getElementById('scan-texto').value.trim();
-  const resultadosEl = document.getElementById('scan-resultados');
+  const card = document.getElementById('scan-resultado-card');
 
   if (!texto) {
     status.textContent = '⚠️ Digite ou reconheça um texto antes de buscar.';
+    card.classList.remove('on');
+    scanRenderCamposTags({});
     return;
   }
   if (!_allRows || !_allRows.length) {
@@ -5293,27 +5367,69 @@ function scanExecutarBusca() {
     return;
   }
 
+  scanRenderCamposTags(scanExtrairCampos(texto));
+
   const matches = scanBuscarSequencia(texto, 5);
   status.textContent = matches.length
     ? `${matches.length} resultado(s) encontrado(s).`
     : 'Nenhuma correspondência encontrada.';
+  scanRenderResultado(matches);
+}
 
-  if (!matches.length) {
-    resultadosEl.innerHTML = '<div id="scan-empty">Nenhuma correspondência encontrada.</div>';
+function scanRenderResultado(matches) {
+  const card = document.getElementById('scan-resultado-card');
+  const melhor = document.getElementById('scan-melhor-resultado');
+  const altList = document.getElementById('scan-alt-list');
+
+  card.classList.add('on');
+
+  if (!matches.length || matches[0].pct < 0.25) {
+    melhor.innerHTML = '<div id="scan-nada">Nenhum endereço parecido na rota carregada. Confira o texto.</div>';
+    altList.innerHTML = '';
     return;
   }
 
-  resultadosEl.innerHTML = matches.map((m, i) => {
-    const row = m.item;
-    const seq = row.stop || row.group_stops || '—';
-    const addr = row.group_label || row.address || row.endereco_original || '';
-    const pct = Math.round(m.pct * 100);
-    return `<div class="scan-result-item${i === 0 ? ' top' : ''}" onclick="scanIrParaLinha('${row._cid}')">
-      <div class="scan-result-seq">Seq ${escHtml(String(seq))}</div>
-      <div class="scan-result-addr">${escHtml(addr)}</div>
-      <div class="scan-result-pct">${pct}% de correspondência · ${escHtml(m.detalhes.join(', '))}</div>
-    </div>`;
-  }).join('');
+  const top = matches[0];
+  const topRow = top.item;
+  const topSeq = topRow.stop || topRow.group_stops || '—';
+  const topAddr = topRow.group_label || topRow.address || topRow.endereco_original || '';
+  const topPct = Math.round(Math.min(top.pct, 1) * 100);
+
+  melhor.innerHTML =
+    `<div class="scan-carimbo" onclick="scanIrParaLinha('${topRow._cid}')">
+      <div class="scan-carimbo-label">Sequência</div>
+      <div class="scan-carimbo-num">#${escHtml(String(topSeq))}</div>
+    </div>
+    <div class="scan-match-addr">${escHtml(topAddr)}</div>
+    ${top.detalhes.length ? `<div class="scan-match-detail">${escHtml(top.detalhes.join(' · '))}</div>` : ''}
+    <div class="scan-confidence"><i style="width:${topPct}%"></i></div>`;
+
+  const outros = matches.slice(1).filter(m => m.pct >= 0.3);
+  altList.innerHTML = outros.length
+    ? '<h3>Outras possibilidades</h3>' + outros.map(m => {
+        const row = m.item;
+        const seq = row.stop || row.group_stops || '—';
+        const addr = row.group_label || row.address || row.endereco_original || '';
+        const pct = Math.round(m.pct * 100);
+        return `<div class="scan-alt-item" onclick="scanIrParaLinha('${row._cid}')">
+          <div class="scan-alt-seq">#${escHtml(String(seq))}</div>
+          <div class="scan-alt-addr">${escHtml(addr)}</div>
+          <div class="scan-alt-pct">${pct}%</div>
+        </div>`;
+      }).join('')
+    : '';
+}
+
+function scanLimpar() {
+  document.getElementById('scan-texto').value = '';
+  document.getElementById('scan-status').textContent = '';
+  document.getElementById('scan-resultado-card').classList.remove('on');
+  scanRenderCamposTags({});
+  _scanFotoBase64 = null;
+  const img = document.getElementById('scan-preview-img');
+  const area = document.getElementById('scan-capture-area');
+  img.src = '';
+  area.classList.remove('has-img');
 }
 
 // Ao clicar num resultado, fecha o painel e leva o usuário até a linha na tabela
