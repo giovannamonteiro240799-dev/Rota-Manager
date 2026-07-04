@@ -48,6 +48,9 @@ TRATAMENTO_PY  = "tratamento_dados.py"
 HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M")
 HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
 
+GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY")
+GOOGLE_VISION_URL     = "https://vision.googleapis.com/v1/images:annotate"
+
 BREVO_API_URL       = "https://api.brevo.com/v3/smtp/email"
 BREVO_API_KEY       = os.environ.get("BREVO_API_KEY")
 BREVO_SENDER_EMAIL  = os.environ.get("BREVO_SENDER_EMAIL")
@@ -1358,6 +1361,61 @@ async def upload(request: Request, arquivo: UploadFile = File(...)):
     Path(ARQ_ENTRADA).write_bytes(contents)
     print(f"  [UPLOAD] {ARQ_ENTRADA} salvo ({len(contents)} bytes) — usuário: {sess['usuario']}")
     return ok_json({"ok": True})
+
+@app.post("/scan/ocr")
+async def scan_ocr(request: Request):
+    """
+    Recebe uma imagem em base64 (foto de etiqueta/pacote) e retorna o texto
+    reconhecido via Google Cloud Vision API (OCR). Requer apenas login básico
+    (não usa o gate de acesso pago do /upload, pois é uma feature separada).
+    """
+    _sessao_ou_401(request)
+
+    if not GOOGLE_VISION_API_KEY:
+        return err_json("OCR não configurado no servidor (GOOGLE_VISION_API_KEY ausente).", 500)
+
+    data = await request.json()
+    imagem_b64 = (data.get("imagem") or "").strip()
+    if not imagem_b64:
+        return err_json("Nenhuma imagem enviada.")
+
+    # Remove prefixo data URL, se vier (ex.: "data:image/jpeg;base64,...")
+    if "," in imagem_b64 and imagem_b64.strip().startswith("data:"):
+        imagem_b64 = imagem_b64.split(",", 1)[1]
+
+    payload = {
+        "requests": [{
+            "image": {"content": imagem_b64},
+            "features": [{"type": "TEXT_DETECTION"}],
+            "imageContext": {"languageHints": ["pt"]},
+        }]
+    }
+
+    try:
+        resp = requests.post(
+            GOOGLE_VISION_URL,
+            params={"key": GOOGLE_VISION_API_KEY},
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except requests.exceptions.RequestException as e:
+        print(f"  [SCAN/OCR] ❌ falha na chamada à Vision API: {e}")
+        return err_json("Falha ao consultar o serviço de OCR. Tente novamente.", 502)
+
+    resposta = (result.get("responses") or [{}])[0]
+    if "error" in resposta:
+        msg = resposta["error"].get("message", "Erro desconhecido na Vision API.")
+        print(f"  [SCAN/OCR] ❌ Vision API: {msg}")
+        return err_json(msg, 502)
+
+    texto = ""
+    annotations = resposta.get("textAnnotations") or []
+    if annotations:
+        texto = annotations[0].get("description", "")
+
+    return ok_json({"ok": True, "texto": texto})
 
 @app.post("/pipeline")
 async def pipeline(request: Request):

@@ -570,6 +570,97 @@ header .badge b { color: var(--accent2); }
   #banco-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 20px; }
   #banco-count { font-size: 11px; color: var(--muted); text-align: right; padding: 4px 10px 0; }
 
+  /* ── Painel Rota Scan (OCR) ── */
+  #scan-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #scan-overlay.show { display: flex; }
+  #scan-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 400px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+  }
+  #scan-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #scan-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #scan-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #scan-header .close-btn:hover { color: var(--text); }
+  #scan-body { flex: 1; overflow-y: auto; padding: 14px; }
+  #scan-capture-area {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  #scan-capture-area.has-img { padding: 8px; }
+  #scan-preview-img {
+    max-width: 100%;
+    max-height: 260px;
+    border-radius: 8px;
+    display: none;
+  }
+  #scan-capture-area.has-img #scan-preview-img { display: block; }
+  #scan-capture-hint { font-size: 12px; color: var(--muted); }
+  .scan-cam-row { display: flex; gap: 8px; margin-top: 12px; }
+  .scan-cam-row .btn { flex: 1; font-size: 13px; }
+  #scan-texto {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 13px;
+    min-height: 80px;
+    resize: vertical;
+    font-family: inherit;
+  }
+  #scan-buscar-btn { width: 100%; margin-top: 10px; }
+  #scan-status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  #scan-resultados { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .scan-result-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .scan-result-item:hover { border-color: var(--accent2); }
+  .scan-result-item.top { border-color: var(--accent); background: rgba(245,158,11,.07); }
+  .scan-result-seq { font-size: 13px; font-weight: 700; color: var(--accent2); }
+  .scan-result-item.top .scan-result-seq { color: var(--accent); }
+  .scan-result-addr { font-size: 12px; color: var(--text); margin-top: 3px; word-break: break-word; }
+  .scan-result-pct { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  #scan-empty { text-align: center; padding: 30px 20px; color: var(--muted); font-size: 13px; }
+
   /* ── Painel Histórico ── */
   #hist-overlay {
     display: none;
@@ -2416,6 +2507,10 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
       <span class="nav-label">Histórico</span>
     </button>
+    <button class="nav-item" id="snav-scan" onclick="sidebarNav('scan')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span class="nav-label">Rota Scan</span>
+    </button>
     <p class="nav-section-label" style="margin-top:6px">Conta</p>
     <button class="nav-item" id="snav-assinatura" onclick="sidebarNav('assinatura')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -2614,6 +2709,37 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     </div>
     <div id="hist-list">
       <div id="hist-empty">Nenhuma rota no histórico ainda.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAINEL ROTA SCAN (OCR) ══ -->
+<div id="scan-overlay" onclick="fecharScan(event)">
+  <div id="scan-panel">
+    <div id="scan-header">
+      <span>📷</span>
+      <span class="title">Rota Scan</span>
+      <button class="close-btn" onclick="fecharScan()">✕</button>
+    </div>
+    <div id="scan-body">
+      <div id="scan-capture-area">
+        <img id="scan-preview-img" alt="Foto capturada">
+        <div id="scan-capture-hint">Tire uma foto da etiqueta ou envie da galeria</div>
+        <div class="scan-cam-row">
+          <button class="btn btn-primary" onclick="document.getElementById('scan-file-camera').click()">📷 Câmera</button>
+          <button class="btn" onclick="document.getElementById('scan-file-galeria').click()">🖼 Galeria</button>
+        </div>
+      </div>
+      <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none" onchange="scanArquivoSelecionado(event)">
+      <input type="file" id="scan-file-galeria" accept="image/*" style="display:none" onchange="scanArquivoSelecionado(event)">
+
+      <textarea id="scan-texto" placeholder="Texto reconhecido (editável)..."></textarea>
+      <button class="btn btn-primary" id="scan-buscar-btn" onclick="scanExecutarBusca()">🔎 Buscar sequência</button>
+      <div id="scan-status"></div>
+
+      <div id="scan-resultados">
+        <div id="scan-empty">Nenhuma busca realizada ainda.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -3317,6 +3443,7 @@ tbody.innerHTML = '<tr><td colspan="6" class="empty-filter">Nenhum endereço enc
 } else {
 for (const row of rows) {
 const tr = document.createElement('tr');
+tr.dataset.cid = row._cid;
 const hasCoord = !!row.coord;
 if (row.group_size > 1) tr.classList.add('grouped');
 if (row.do_banco) {
@@ -4870,6 +4997,309 @@ async function tentarRestaurarUltimaRota() {
 
 
 // ══════════════════════════════════════════════════════════
+//  ROTA SCAN (OCR de etiquetas + busca de sequência)
+//  Namespace "scan" para não colidir com nomes já usados no app.
+// ══════════════════════════════════════════════════════════
+
+const SCAN_PESOS = { rua: 60, numero: 40, apt: 35, cep: 50, setor: 20 };
+let _scanFotoBase64 = null;
+let _scanIndexCache = null; // referência de _allRows já indexado
+
+function scanNormalize(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scanExtrairNumeros(txt, ruaKey) {
+  const nums = new Set();
+  const matches = txt.match(/\b\d{2,4}\b/g) || [];
+  for (const n of matches) {
+    if (ruaKey && ruaKey.endsWith(n)) continue;
+    if (n.length >= 2) nums.add(n);
+  }
+  return nums;
+}
+
+function scanExtrairCampos(raw) {
+  const txt = scanNormalize(raw);
+  const original = raw || '';
+  const campos = {
+    rua: null, ruaLabel: null, numero: null, apt: null,
+    cep: null, setor: null, numeros: new Set(), tokens: []
+  };
+
+  const cepRaw = original.match(/\b(74[\d\s\-]{6,10})\b/);
+  if (cepRaw) {
+    const cep = cepRaw[1].replace(/\D/g, '');
+    if (cep.length === 8) campos.cep = cep;
+  }
+
+  let m;
+  m = txt.match(/\b(?:rua|r)\s*s\s*(\d+)\b/) || txt.match(/\br\s+s\s+(\d+)\b/);
+  if (m) { campos.rua = 'rs' + m[1]; campos.ruaLabel = 'R S ' + m[1]; }
+
+  if (!campos.rua) {
+    m = txt.match(/\b(?:rua|r)\s*t\s*(\d+)\b/);
+    if (m) { campos.rua = 'rt' + m[1]; campos.ruaLabel = 'R T ' + m[1]; }
+  }
+  if (!campos.rua) {
+    m = txt.match(/\b(?:av|avenida|avemda)\s*t?\s*(\d+)\b/);
+    if (m) { campos.rua = 'avt' + m[1]; campos.ruaLabel = 'Av T ' + m[1]; }
+  }
+  if (!campos.rua) {
+    m = txt.match(/\b(?:rua|r)\s*(\d{3,4})\b/);
+    if (m) { campos.rua = 'r' + m[1]; campos.ruaLabel = 'R ' + m[1]; }
+  }
+  if (!campos.rua) {
+    m = txt.match(/\b(?:av|avenida)\s+(circular|edmundo|laudelino|seg(?:unda)?\s*radial)\b/);
+    if (m) { campos.rua = 'av' + m[1].replace(/\s+/g, '').slice(0, 8); campos.ruaLabel = 'Av ' + m[1]; }
+  }
+  if (!campos.rua) {
+    m = txt.match(/\b(?:alameda|al)\s+(couto|leopoldo[a-z\s]*)/);
+    if (m) { campos.rua = 'al' + m[1].replace(/\s+/g, '').slice(0, 10); campos.ruaLabel = 'Al ' + m[1]; }
+  }
+  if (!campos.rua) {
+    m = txt.match(/\b(rs\d+|rt\d+|avt\d+|r10\d{2}|r11\d{2})\b/);
+    if (m) campos.rua = m[1];
+  }
+
+  const aptPatterns = [
+    /\b(?:ap(?:to|t|x[o0])?\.{0,2}\s*:?\s*|apartamento\s*|ap\s*)(\d{2,4})\b/i,
+    /\bap(\d{2,4})\b/
+  ];
+  for (const re of aptPatterns) {
+    m = original.match(re) || txt.match(re);
+    if (m) { campos.apt = m[1]; break; }
+  }
+
+  campos.numeros = scanExtrairNumeros(txt, campos.rua);
+
+  const numsOrd = Array.from(campos.numeros).sort((a, b) => b.length - a.length);
+  if (campos.apt) campos.numero = campos.apt;
+  else if (numsOrd.length) campos.numero = numsOrd[0];
+
+  m = txt.match(/\bsetor\s+([a-z\s]{3,30}?)(?:\s|,|$)/);
+  if (m) campos.setor = scanNormalize(m[1]);
+
+  [campos.rua, campos.numero, campos.apt, campos.cep, campos.setor]
+    .filter(Boolean)
+    .forEach(t => campos.tokens.push(String(t)));
+  campos.numeros.forEach(n => campos.tokens.push(n));
+
+  return campos;
+}
+
+function scanRuaNoTexto(ruaKey, norm) {
+  if (!ruaKey || !norm) return false;
+  if (norm.includes(ruaKey)) return true;
+  const m = ruaKey.match(/^(rs|rt|avt|r)(\d+)$/);
+  if (!m) return norm.includes(ruaKey);
+  const tipo = m[1], num = m[2];
+  if (tipo === 'rs') return new RegExp('\\b(?:rua|r)\\s*s\\s*' + num + '\\b').test(norm) || norm.includes('r s ' + num);
+  if (tipo === 'rt') return new RegExp('\\b(?:rua|r)\\s*t\\s*' + num + '\\b').test(norm) || norm.includes('r t ' + num);
+  if (tipo === 'avt') return new RegExp('\\b(?:av|avenida)\\s*t\\s*' + num + '\\b').test(norm);
+  if (tipo === 'r') return new RegExp('\\b(?:rua|r)\\s*' + num + '\\b').test(norm);
+  return false;
+}
+
+function scanNumeroNoEndereco(num, item) {
+  if (!num) return false;
+  if (item._scanNumeros.has(num)) return true;
+  return new RegExp('\\b' + num + '\\b').test(item._scanNorm);
+}
+
+// Constrói/atualiza o índice de busca em cima das linhas já carregadas
+// no app (_allRows), sem alterar os objetos originais além de anexar
+// campos auxiliares prefixados com "_scan".
+function scanBuildIndex(rows) {
+  rows.forEach(it => {
+    const textoBase = [it.address, it.endereco_original, it.group_label]
+      .filter(Boolean).join(' | ');
+    it._scanNorm = scanNormalize(textoBase);
+    it._scanCampos = scanExtrairCampos(textoBase);
+    it._scanNumeros = scanExtrairNumeros(it._scanNorm, it._scanCampos.rua);
+    it._scanCampos.numeros.forEach(n => it._scanNumeros.add(n));
+  });
+  return rows;
+}
+
+function scanScoreFieldMatch(q, item) {
+  const c = item._scanCampos;
+  let score = 0, maxScore = 0;
+  const detalhes = [];
+
+  if (q.rua) {
+    maxScore += SCAN_PESOS.rua;
+    if (q.rua === c.rua || scanRuaNoTexto(q.rua, item._scanNorm)) {
+      score += SCAN_PESOS.rua;
+      detalhes.push('rua ✓');
+    }
+  }
+
+  const numsBusca = new Set();
+  if (q.numero) numsBusca.add(q.numero);
+  if (q.apt) numsBusca.add(q.apt);
+  q.numeros.forEach(n => numsBusca.add(n));
+
+  if (numsBusca.size) {
+    maxScore += SCAN_PESOS.numero;
+    let hits = 0;
+    numsBusca.forEach(n => { if (scanNumeroNoEndereco(n, item)) hits++; });
+    if (hits > 0) {
+      score += Math.round(SCAN_PESOS.numero * (hits / numsBusca.size));
+      detalhes.push('nº ' + hits + '/' + numsBusca.size);
+    }
+  }
+
+  if (q.apt) {
+    maxScore += SCAN_PESOS.apt;
+    if (q.apt === c.apt || scanNumeroNoEndereco(q.apt, item)) {
+      score += SCAN_PESOS.apt;
+      detalhes.push('apt ✓');
+    }
+  }
+
+  if (q.cep) {
+    maxScore += SCAN_PESOS.cep;
+    if (q.cep === c.cep || item._scanNorm.includes(q.cep)) {
+      score += SCAN_PESOS.cep;
+      detalhes.push('cep ✓');
+    }
+  }
+
+  if (q.setor) {
+    maxScore += SCAN_PESOS.setor;
+    if (c.setor && (q.setor === c.setor || c.setor.includes(q.setor) || q.setor.includes(c.setor))) {
+      score += SCAN_PESOS.setor;
+      detalhes.push('setor ✓');
+    }
+  }
+
+  const pct = maxScore > 0 ? score / maxScore : 0;
+  return { score, maxScore, pct, detalhes };
+}
+
+function scanBuscarSequencia(texto, topN) {
+  if (!_allRows || !_allRows.length) return [];
+  scanBuildIndex(_allRows);
+
+  const campos = scanExtrairCampos(texto);
+  if (!campos.rua && !campos.numero && !campos.apt && campos.numeros.size === 0) return [];
+
+  const resultados = [];
+  for (const item of _allRows) {
+    const r = scanScoreFieldMatch(campos, item);
+    if (r.score > 0) resultados.push({ item, score: r.score, maxScore: r.maxScore, pct: r.pct, detalhes: r.detalhes });
+  }
+  resultados.sort((a, b) => b.score - a.score || b.pct - a.pct);
+  return resultados.slice(0, topN || 5);
+}
+
+// ── UI: painel, câmera, OCR ──────────────────────────────────────────
+
+function abrirScan() {
+  _abrirOverlayAnimado('scan-overlay', 'scan-panel', 'animate__slideInRight');
+}
+
+function fecharScan(e) {
+  if (e && e.target !== document.getElementById('scan-overlay')) return;
+  _fecharOverlayAnimado('scan-overlay', 'scan-panel', 'animate__slideOutRight');
+}
+
+function scanArquivoSelecionado(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    _scanFotoBase64 = reader.result; // data:image/...;base64,....
+    const img = document.getElementById('scan-preview-img');
+    const area = document.getElementById('scan-capture-area');
+    img.src = _scanFotoBase64;
+    area.classList.add('has-img');
+    scanReconhecerTexto();
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+async function scanReconhecerTexto() {
+  const status = document.getElementById('scan-status');
+  const textoEl = document.getElementById('scan-texto');
+  if (!_scanFotoBase64) return;
+  status.textContent = '⏳ Reconhecendo texto da imagem...';
+  try {
+    const r = await fetch(SERVER + '/scan/ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ imagem: _scanFotoBase64 })
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      status.textContent = '❌ ' + (d.erro || 'Falha no OCR.');
+      return;
+    }
+    textoEl.value = d.texto || '';
+    status.textContent = d.texto ? '✅ Texto reconhecido. Confira e ajuste se preciso.' : '⚠️ Nenhum texto encontrado na imagem.';
+  } catch (e) {
+    status.textContent = '❌ Erro ao conectar com o servidor de OCR.';
+  }
+}
+
+function scanExecutarBusca() {
+  const status = document.getElementById('scan-status');
+  const texto = document.getElementById('scan-texto').value.trim();
+  const resultadosEl = document.getElementById('scan-resultados');
+
+  if (!texto) {
+    status.textContent = '⚠️ Digite ou reconheça um texto antes de buscar.';
+    return;
+  }
+  if (!_allRows || !_allRows.length) {
+    status.textContent = '⚠️ Nenhuma rota carregada para buscar.';
+    return;
+  }
+
+  const matches = scanBuscarSequencia(texto, 5);
+  status.textContent = matches.length
+    ? `${matches.length} resultado(s) encontrado(s).`
+    : 'Nenhuma correspondência encontrada.';
+
+  if (!matches.length) {
+    resultadosEl.innerHTML = '<div id="scan-empty">Nenhuma correspondência encontrada.</div>';
+    return;
+  }
+
+  resultadosEl.innerHTML = matches.map((m, i) => {
+    const row = m.item;
+    const seq = row.stop || row.group_stops || '—';
+    const addr = row.group_label || row.address || row.endereco_original || '';
+    const pct = Math.round(m.pct * 100);
+    return `<div class="scan-result-item${i === 0 ? ' top' : ''}" onclick="scanIrParaLinha('${row._cid}')">
+      <div class="scan-result-seq">Seq ${escHtml(String(seq))}</div>
+      <div class="scan-result-addr">${escHtml(addr)}</div>
+      <div class="scan-result-pct">${pct}% de correspondência · ${escHtml(m.detalhes.join(', '))}</div>
+    </div>`;
+  }).join('');
+}
+
+// Ao clicar num resultado, fecha o painel e leva o usuário até a linha na tabela
+function scanIrParaLinha(cid) {
+  fecharScan();
+  setTimeout(() => {
+    const el = document.querySelector(`tr[data-cid="${cid}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('linha-editou');
+      setTimeout(() => el.classList.remove('linha-editou'), 1500);
+    }
+  }, 260);
+}
+
+// ══════════════════════════════════════════════════════════
 //  EXPORTAR XLSX ATUALIZADO
 // ══════════════════════════════════════════════════════════
 
@@ -6046,6 +6476,7 @@ function sidebarNav(page) {
     case 'lista':       irParaLista(); break;
     case 'historico':   abrirHistorico(); break;
     case 'banco':       abrirBanco(); break;
+    case 'scan':        abrirScan(); break;
     case 'assinatura':  abrirAssinatura(); break;
     case 'admin':       abrirAdmin(); break;
   }
