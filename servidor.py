@@ -23,6 +23,7 @@ import re
 import secrets
 import subprocess
 import sys
+import threading
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1418,13 +1419,52 @@ async def scan_ocr(request: Request):
 
     return ok_json({"ok": True, "texto": texto})
 
-@app.post("/anjun/converter")
-async def anjun_converter(request: Request, arquivo: UploadFile = File(...)):
+# ─── Anjun: CSV -> XLSX geocodificado, com progresso em tempo real ──
+_ANJUN_JOBS: dict = {}  # uid -> {status, total, done, erro, pronto, nome_saida}
+
+def _anjun_processar_bg(uid: str, entrada_path: Path, saida_path: Path):
+    job = _ANJUN_JOBS[uid]
+    try:
+        env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY}
+        proc = subprocess.Popen(
+            [sys.executable, ANJUN_SCRIPT, str(entrada_path), str(saida_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, env=env_here,
+        )
+        for linha in proc.stdout:
+            linha = linha.rstrip("\n")
+            if linha:
+                print(f"  [ANJUN] {linha}")
+            m_total = re.search(r"Geocodificando (\d+) CEP", linha)
+            if m_total:
+                job["total"] = int(m_total.group(1))
+            m_item = re.match(r"\s*\[(\d+)/(\d+)\]", linha)
+            if m_item:
+                job["done"] = int(m_item.group(1))
+                job["total"] = int(m_item.group(2))
+        proc.wait(timeout=600)
+        if proc.returncode != 0:
+            job["erro"] = "Erro ao rodar o script (verifique o CSV de entrada)."
+        elif not saida_path.exists():
+            job["erro"] = "O script rodou mas não gerou o arquivo de saída."
+        else:
+            job["total"] = max(job["total"], job["done"], 1)
+            job["done"] = job["total"]
+            job["pronto"] = True
+    except subprocess.TimeoutExpired:
+        job["erro"] = "Timeout: a geocodificação demorou mais que o esperado."
+    except Exception as e:
+        job["erro"] = str(e)
+    finally:
+        job["status"] = "concluido"
+
+@app.post("/anjun/iniciar")
+async def anjun_iniciar(request: Request, arquivo: UploadFile = File(...)):
     """
-    Recebe um CSV (formato delivery_list, sem sequência) e devolve o .xlsx
-    já geocodificado (Sequence/Address/.../Lat/Lon/Geo Fonte), gerado pelo
-    csv_para_rota_xlsx.py. Requer só login básico — é uma ferramenta
-    separada do pipeline principal, não consome crédito de importação.
+    Recebe um CSV (formato delivery_list, sem sequência), salva e dispara o
+    csv_para_rota_xlsx.py em segundo plano. Requer só login básico — é uma
+    ferramenta separada do pipeline principal, não consome crédito de
+    importação. O progresso é consultado via GET /anjun/progresso.
     """
     sess = _sessao_ou_401(request)
 
@@ -1441,35 +1481,48 @@ async def anjun_converter(request: Request, arquivo: UploadFile = File(...)):
     saida_path   = DATA_DIR / f"anjun_saida_{uid}.xlsx"
     entrada_path.write_bytes(contents)
 
+    nome_saida = f"{Path(arquivo.filename or 'anjun').stem}_GEO.xlsx"
+    _ANJUN_JOBS[uid] = {
+        "status": "rodando", "total": 0, "done": 0,
+        "erro": None, "pronto": False, "nome_saida": nome_saida,
+        "saida_path": str(saida_path),
+    }
+
     print(f"  [ANJUN] {entrada_path.name} salvo ({len(contents)} bytes) — usuário: {sess['usuario']}")
 
-    try:
-        env_here = {**os.environ, "HERE_API_KEY": HERE_API_KEY}
-        result = subprocess.run(
-            [sys.executable, ANJUN_SCRIPT, str(entrada_path), str(saida_path)],
-            capture_output=True, text=True, timeout=600, env=env_here,
-        )
-        if result.returncode != 0:
-            erro = result.stderr or result.stdout or "Erro desconhecido"
-            print(f"  [ANJUN] ❌ {erro}")
-            return err_json(erro)
-        if result.stdout:
-            print(result.stdout)
-    except subprocess.TimeoutExpired:
-        return err_json("Timeout: a geocodificação demorou mais que o esperado.")
-    except Exception as e:
-        print(f"  [ANJUN] ❌ {e}")
-        return err_json(str(e))
+    thread = threading.Thread(target=_anjun_processar_bg, args=(uid, entrada_path, saida_path), daemon=True)
+    thread.start()
 
+    return ok_json({"ok": True})
+
+@app.get("/anjun/progresso")
+async def anjun_progresso(request: Request):
+    sess = _sessao_ou_401(request)
+    job = _ANJUN_JOBS.get(sess["user_id"])
+    if not job:
+        return err_json("Nenhum processamento em andamento.")
+    return ok_json({
+        "ok": True,
+        "status": job["status"],
+        "total": job["total"],
+        "done": job["done"],
+        "pronto": job["pronto"],
+        "erro": job["erro"],
+    })
+
+@app.get("/anjun/baixar")
+async def anjun_baixar(request: Request):
+    sess = _sessao_ou_401(request)
+    job = _ANJUN_JOBS.get(sess["user_id"])
+    if not job or not job.get("pronto"):
+        return err_json("Arquivo ainda não está pronto.")
+    saida_path = Path(job["saida_path"])
     if not saida_path.exists():
-        return err_json("O script rodou mas não gerou o arquivo de saída.")
-
-    nome_saida = f"{Path(arquivo.filename or 'anjun').stem}_GEO.xlsx"
-    print(f"  [ANJUN] ✅ {nome_saida} pronto")
+        return err_json("Arquivo de saída não encontrado (pode ter expirado).")
     return FileResponse(
         str(saida_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=nome_saida,
+        filename=job["nome_saida"],
     )
 
 @app.post("/pipeline")
