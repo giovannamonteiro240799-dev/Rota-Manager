@@ -7,6 +7,7 @@
 <title>Rota Manager</title>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -799,6 +800,133 @@ header .badge b { color: var(--accent2); }
   #anjun-resultado.on { display: block; }
   #anjun-resultado .btn { width: 100%; }
   #anjun-info {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 14px;
+    line-height: 1.5;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Painel Extração de Prints (OCR client-side) ── */
+  #extracao-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  #extracao-overlay.show { display: flex; }
+  #extracao-panel {
+    background: var(--surface);
+    border-left: 2px solid var(--border);
+    width: 420px;
+    max-width: 95vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 32px rgba(0,0,0,.5);
+  }
+  #extracao-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  #extracao-header .title { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+  #extracao-header .close-btn {
+    background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #extracao-header .close-btn:hover { color: var(--text); }
+  #extracao-body { flex: 1; overflow-y: auto; padding: 14px; }
+  #extracao-drop-area {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  #extracao-drop-hint { font-size: 12px; color: var(--muted); }
+  #extracao-file-name { font-size: 12px; color: var(--text); font-weight: 600; word-break: break-all; }
+  #extracao-progress-wrap { display: none; margin-top: 14px; }
+  #extracao-progress-wrap.on { display: block; }
+  #extracao-progress-track {
+    height: 8px;
+    border-radius: 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  #extracao-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width .25s ease;
+  }
+  #extracao-progress-fill.indeterminado {
+    width: 35% !important;
+    animation: anjun-progress-slide 1.1s ease-in-out infinite;
+  }
+  #extracao-progress-label { font-size: 11px; color: var(--muted); margin-top: 6px; text-align: right; }
+  #extracao-status { font-size: 12px; color: var(--muted); margin-top: 12px; min-height: 16px; white-space: pre-line; }
+  #extracao-resumo {
+    display: none;
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  #extracao-resumo.on { display: block; }
+  #extracao-lista { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .extracao-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .extracao-item input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 8px;
+    font-family: inherit;
+  }
+  .extracao-item input.nome { font-weight: 700; }
+  .extracao-item-row { display: flex; gap: 6px; align-items: center; }
+  .extracao-item-remove {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px 6px;
+  }
+  .extracao-item-remove:hover { color: #ef4444; }
+  #extracao-acoes {
+    display: none;
+    margin-top: 14px;
+    gap: 8px;
+    flex-direction: column;
+  }
+  #extracao-acoes.on { display: flex; }
+  #extracao-acoes .btn { width: 100%; }
+  #extracao-info {
     font-size: 11px;
     color: var(--muted);
     margin-top: 14px;
@@ -2662,6 +2790,10 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
       <span class="nav-label">Rota Scan</span>
     </button>
+    <button class="nav-item" id="snav-extracao" onclick="sidebarNav('extracao')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      <span class="nav-label">Extrair de Prints</span>
+    </button>
     <p class="nav-section-label" style="margin-top:6px">Conta</p>
     <button class="nav-item" id="snav-assinatura" onclick="sidebarNav('assinatura')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -2932,6 +3064,47 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
         <h3>Resultado</h3>
         <div id="scan-melhor-resultado"></div>
         <div class="scan-alt-list" id="scan-alt-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAINEL EXTRAÇÃO DE PRINTS (OCR client-side via Tesseract.js) ══ -->
+<div id="extracao-overlay" onclick="fecharExtracao(event)">
+  <div id="extracao-panel">
+    <div id="extracao-header">
+      <span>🧾</span>
+      <span class="title">Extrair de Prints</span>
+      <button class="close-btn" onclick="fecharExtracao()">✕</button>
+    </div>
+    <div id="extracao-body">
+      <div id="extracao-drop-area">
+        <div id="extracao-drop-hint">Selecione os prints da lista de entregas (galeria). O texto é reconhecido direto no navegador — nada é enviado pra fora do aparelho.</div>
+        <div id="extracao-file-name"></div>
+        <button class="btn btn-primary" onclick="document.getElementById('extracao-file-input').click()">🖼 Selecionar prints</button>
+      </div>
+      <input type="file" id="extracao-file-input" accept="image/*" multiple style="display:none" onchange="extracaoArquivosSelecionados(event)">
+
+      <div id="extracao-progress-wrap">
+        <div id="extracao-progress-track">
+          <div id="extracao-progress-fill"></div>
+        </div>
+        <div id="extracao-progress-label"></div>
+      </div>
+
+      <div id="extracao-status"></div>
+
+      <div id="extracao-resumo"></div>
+      <div id="extracao-lista"></div>
+
+      <div id="extracao-acoes">
+        <button class="btn btn-primary" onclick="extracaoBaixarCSV()">⬇ Baixar CSV</button>
+        <button class="btn" onclick="extracaoEnviarParaAnjun()">📥 Enviar direto pro Anjun (geocodificar)</button>
+        <button class="btn" onclick="extracaoLimpar()">Limpar</button>
+      </div>
+
+      <div id="extracao-info">
+        OCR feito com Tesseract.js (roda no navegador, sem servidor). Depois de extrair, revise os campos antes de baixar — reconhecimento de texto em foto de tela pode errar acentos ou números.
       </div>
     </div>
   </div>
@@ -5433,6 +5606,260 @@ function fecharScan(e) {
   _fecharOverlayAnimado('scan-overlay', 'scan-panel', 'animate__slideOutRight');
 }
 
+// ══════════════════════════════════════════════════════════
+//  EXTRAÇÃO DE PRINTS (OCR 100% client-side via Tesseract.js)
+//  Porta em JS do parser heurístico usado no protótipo Android
+//  (CardParser.kt): identifica nome + endereço em cards de tela
+//  de lista de entregas, sem depender de servidor.
+// ══════════════════════════════════════════════════════════
+let _extracaoResultados = []; // [{nome, endereco}]
+let _extracaoWorker = null;
+
+function abrirExtracao() {
+  _abrirOverlayAnimado('extracao-overlay', 'extracao-panel', 'animate__slideInRight');
+}
+
+function fecharExtracao(e) {
+  if (e && e.target !== document.getElementById('extracao-overlay')) return;
+  _fecharOverlayAnimado('extracao-overlay', 'extracao-panel', 'animate__slideOutRight');
+}
+
+// ── Parser heurístico (porta de CardParser.kt) ──
+const _EXTR_ENDERECO_KEYWORDS = [
+  'rua ', 'av ', 'avenida', 'alameda', 'travessa', 'rodovia',
+  'quadra', ' qd ', ' qd', 'lote', ' lt ', ' lt', 'setor',
+  'bairro', 'goiânia', 'goiania', 'aparecida de goiânia',
+  'senador canedo', 's/n', ' nº', ' n°'
+];
+const _EXTR_CEP_REGEX = /\d{5}-?\d{3}/;
+const _EXTR_IGNORAR_FRASES = ['e2e', 'notas rápidas', 'notas rapidas', 'restante', 'tempo esgotado'];
+const _EXTR_TAGS_EXATAS = new Set(['lm', 'd2d', 'lm d2d', 'd2d lm']);
+const _EXTR_HORARIO_REGEX = /\d{1,2}[:h]\d{2}/;
+const _EXTR_DISTANCIA_REGEX = /^\d+([.,]\d+)?\s?km$/;
+const _EXTR_QTD_SUFFIX_REGEX = /\s*\(\d+[^)]*\)\s*$/;
+
+function _extrIsEndereco(linha) {
+  const l = linha.toLowerCase();
+  return _EXTR_ENDERECO_KEYWORDS.some(k => l.includes(k)) || _EXTR_CEP_REGEX.test(l);
+}
+
+function _extrIsIgnoravel(linha) {
+  const l = linha.toLowerCase().trim();
+  if (!l) return true;
+  if (_EXTR_TAGS_EXATAS.has(l)) return true;
+  if (_EXTR_HORARIO_REGEX.test(l)) return true;
+  if (_EXTR_DISTANCIA_REGEX.test(l.replace(/\s+/g, ''))) return true;
+  return _EXTR_IGNORAR_FRASES.some(f => l.includes(f));
+}
+
+// Recebe linhas de texto (na ordem em que aparecem na tela, topo -> baixo)
+// e devolve a lista de {nome, endereco} identificados no print.
+function _extrParseCard(linhas) {
+  const resultado = [];
+  let nomeBuffer = null;
+  let enderecoBuffer = null;
+
+  function finalizarCardSeCompleto() {
+    const nome = nomeBuffer ? nomeBuffer.replace(_EXTR_QTD_SUFFIX_REGEX, '').trim() : null;
+    let endereco = enderecoBuffer ? enderecoBuffer.trim() : null;
+    if (nome && endereco) {
+      endereco = endereco.replace(/^[📍>•\-\s]+/, '');
+      resultado.push({ nome, endereco });
+    }
+    nomeBuffer = null;
+    enderecoBuffer = null;
+  }
+
+  for (const linhaBruta of linhas) {
+    const linha = (linhaBruta || '').trim();
+    if (!linha) continue;
+
+    if (_extrIsIgnoravel(linha)) {
+      finalizarCardSeCompleto();
+    } else if (enderecoBuffer !== null) {
+      enderecoBuffer += ' ' + linha;
+    } else if (_extrIsEndereco(linha)) {
+      enderecoBuffer = linha;
+    } else {
+      nomeBuffer = linha;
+    }
+  }
+  finalizarCardSeCompleto();
+  return resultado;
+}
+
+function _extrDedupe(entregas) {
+  const vistos = new Set();
+  const unicos = [];
+  for (const e of entregas) {
+    const chave = e.endereco.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!vistos.has(chave)) {
+      vistos.add(chave);
+      unicos.push(e);
+    }
+  }
+  return unicos;
+}
+
+// ── OCR (Tesseract.js) ──
+async function _extrGetWorker() {
+  if (_extracaoWorker) return _extracaoWorker;
+  _extracaoWorker = await Tesseract.createWorker('por');
+  return _extracaoWorker;
+}
+
+// Extrai as linhas de um arquivo de imagem, ordenadas de cima pra baixo
+// pela posição Y (mesma lógica do ML Kit no protótipo Android).
+async function _extrExtrairLinhas(worker, file) {
+  const { data } = await worker.recognize(file);
+  const linhas = (data.lines || [])
+    .map(l => ({ texto: l.text, y: l.bbox ? l.bbox.y0 : 0 }))
+    .sort((a, b) => a.y - b.y)
+    .map(l => l.texto);
+  return linhas;
+}
+
+async function extracaoArquivosSelecionados(event) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = '';
+  if (!files.length) return;
+
+  document.getElementById('extracao-file-name').textContent =
+    files.length === 1 ? files[0].name : `${files.length} prints selecionados`;
+
+  const status = document.getElementById('extracao-status');
+  const progWrap = document.getElementById('extracao-progress-wrap');
+  const progLabel = document.getElementById('extracao-progress-label');
+  const progFill = document.getElementById('extracao-progress-fill');
+  progWrap.classList.add('on');
+  progFill.classList.remove('indeterminado');
+  status.textContent = '';
+
+  try {
+    const worker = await _extrGetWorker();
+    let todasEntregas = [];
+
+    for (let i = 0; i < files.length; i++) {
+      progLabel.textContent = `Processando print ${i + 1}/${files.length}...`;
+      progFill.style.width = `${Math.round((i / files.length) * 100)}%`;
+
+      const linhas = await _extrExtrairLinhas(worker, files[i]);
+      const entregasDoPrint = _extrParseCard(linhas);
+      todasEntregas = todasEntregas.concat(entregasDoPrint);
+    }
+
+    progFill.style.width = '100%';
+    progLabel.textContent = 'Concluído';
+
+    _extracaoResultados = _extrDedupe(todasEntregas);
+    _extrRenderResultados();
+
+    if (_extracaoResultados.length === 0) {
+      status.textContent = '⚠️ Nenhum card de entrega reconhecido. Tente prints mais nítidos ou com mais contraste.';
+    } else {
+      status.textContent = `✅ ${_extracaoResultados.length} entrega(s) encontrada(s) (deduplicadas). Revise antes de baixar.`;
+    }
+  } catch (err) {
+    status.textContent = '❌ ' + err.message;
+  } finally {
+    setTimeout(() => progWrap.classList.remove('on'), 600);
+  }
+}
+
+function _extrRenderResultados() {
+  const resumo = document.getElementById('extracao-resumo');
+  const lista = document.getElementById('extracao-lista');
+  const acoes = document.getElementById('extracao-acoes');
+
+  lista.innerHTML = '';
+
+  if (_extracaoResultados.length === 0) {
+    resumo.classList.remove('on');
+    acoes.classList.remove('on');
+    return;
+  }
+
+  resumo.classList.add('on');
+  resumo.textContent = `${_extracaoResultados.length} entrega(s) encontrada(s)`;
+  acoes.classList.add('on');
+
+  _extracaoResultados.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'extracao-item';
+    div.innerHTML = `
+      <div class="extracao-item-row">
+        <input class="nome" type="text" value="${_extrEscapeAttr(item.nome)}" oninput="_extrAtualizarCampo(${idx}, 'nome', this.value)">
+        <button class="extracao-item-remove" onclick="extracaoRemoverItem(${idx})" title="Remover">✕</button>
+      </div>
+      <input class="endereco" type="text" value="${_extrEscapeAttr(item.endereco)}" oninput="_extrAtualizarCampo(${idx}, 'endereco', this.value)">
+    `;
+    lista.appendChild(div);
+  });
+}
+
+function _extrEscapeAttr(v) {
+  return (v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function _extrAtualizarCampo(idx, campo, valor) {
+  if (_extracaoResultados[idx]) _extracaoResultados[idx][campo] = valor;
+}
+
+function extracaoRemoverItem(idx) {
+  _extracaoResultados.splice(idx, 1);
+  _extrRenderResultados();
+}
+
+function extracaoLimpar() {
+  _extracaoResultados = [];
+  document.getElementById('extracao-file-name').textContent = '';
+  document.getElementById('extracao-status').textContent = '';
+  _extrRenderResultados();
+}
+
+function _extrGerarCSV() {
+  const linhas = ['Nome,Endereço'];
+  for (const item of _extracaoResultados) {
+    linhas.push(`${_extrEscaparCsv(item.nome)},${_extrEscaparCsv(item.endereco)}`);
+  }
+  return linhas.join('\r\n');
+}
+
+function _extrEscaparCsv(valor) {
+  const v = valor || '';
+  const precisaAspas = v.includes(',') || v.includes('"') || v.includes('\n');
+  const escapado = v.replace(/"/g, '""');
+  return precisaAspas ? `"${escapado}"` : escapado;
+}
+
+function extracaoBaixarCSV() {
+  if (!_extracaoResultados.length) return;
+  const csv = '\uFEFF' + _extrGerarCSV(); // BOM pra abrir certo no Excel com acentos
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `entregas_extraidas_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Gera o CSV em memória e injeta direto no fluxo do Anjun (mesmo endpoint
+// que já processa o CSV enviado por upload manual), pulando o passo de
+// baixar+re-enviar o arquivo.
+function extracaoEnviarParaAnjun() {
+  if (!_extracaoResultados.length) return;
+  const csv = '\uFEFF' + _extrGerarCSV();
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const file = new File([blob], `entregas_extraidas_${Date.now()}.csv`, { type: 'text/csv' });
+
+  fecharExtracao();
+  abrirAnjun();
+  anjunArquivoSelecionado({ target: { files: [file], value: '' } });
+}
+
 // ── UI: painel Anjun (CSV -> XLSX geocodificado) ──────────────────────
 let _anjunPollTimer = null;
 
@@ -6892,6 +7319,7 @@ function sidebarNav(page) {
     case 'historico':   abrirHistorico(); break;
     case 'banco':       abrirBanco(); break;
     case 'scan':        abrirScan(); break;
+    case 'extracao':    abrirExtracao(); break;
     case 'anjun':       abrirAnjun(); break;
     case 'assinatura':  abrirAssinatura(); break;
     case 'admin':       abrirAdmin(); break;
