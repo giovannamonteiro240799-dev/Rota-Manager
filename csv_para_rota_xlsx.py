@@ -118,9 +118,37 @@ _HERE_API_KEY = os.environ.get("HERE_API_KEY", "").strip()
 _BIAS_LAT = float(os.environ.get("GEO_BIAS_LAT", "-16.6869"))
 _BIAS_LON = float(os.environ.get("GEO_BIAS_LON", "-49.2648"))
 
+# Caixa geográfica de sanidade: qualquer coordenada fora desses limites é
+# descartada (tratada como falha, cascata continua pro próximo nível/motor),
+# mesmo que a fonte tenha "respondido com sucesso". Isso existe porque a
+# HERE (e outros geocoders) já devolveram, na prática, coordenada boa mas
+# em cidade/país errado pra um CEP específico (ex.: caiu na Arábia Saudita
+# pra um CEP de Goiânia) — sem essa checagem, o app aceitaria isso como
+# válido e mandaria o entregador pro lugar errado sem nenhum aviso. A
+# margem por padrão cobre a região metropolitana de Goiânia com folga;
+# ajuste via env se a operação for em outra cidade/UF.
+_BBOX_LAT_MIN = float(os.environ.get("GEO_BBOX_LAT_MIN", "-18.5"))
+_BBOX_LAT_MAX = float(os.environ.get("GEO_BBOX_LAT_MAX", "-14.0"))
+_BBOX_LON_MIN = float(os.environ.get("GEO_BBOX_LON_MIN", "-50.5"))
+_BBOX_LON_MAX = float(os.environ.get("GEO_BBOX_LON_MAX", "-47.5"))
+
+
+def _dentro_da_regiao(lat: float, lon: float) -> bool:
+    return _BBOX_LAT_MIN <= lat <= _BBOX_LAT_MAX and _BBOX_LON_MIN <= lon <= _BBOX_LON_MAX
+
 _ultimo_nominatim = [0.0]  # timestamp da última chamada, pra respeitar 1 req/seg
 _ultimo_here = [0.0]       # throttle leve pra HERE (bem mais tolerante que o Nominatim)
 _ultimo_photon = [0.0]     # throttle leve pra Photon (instância pública, uso justo)
+
+# GEO_DEBUG=1 imprime o motivo real de cada falha (em vez de só devolver None
+# silenciosamente), útil pra diagnosticar chave inválida, bloqueio de rede,
+# rate limit, etc.
+_DEBUG = os.environ.get("GEO_DEBUG", "").strip() == "1"
+
+
+def _debug(origem: str, msg: str) -> None:
+    if _DEBUG:
+        print(f"    [debug/{origem}] {msg}")
 
 _FONTE_LABELS = {
     "here_cep": "HERE (CEP exato)",
@@ -270,6 +298,8 @@ def _here_chamar(params: dict) -> tuple | None:
     try:
         resp = requests.get(_HERE_GEOCODE_URL, params=params, headers=_HEADERS, timeout=10)
         _ultimo_here[0] = time.monotonic()
+        if resp.status_code != 200:
+            _debug("here", f"status {resp.status_code} | params={params} | corpo={resp.text[:200]!r}")
         resp.raise_for_status()
         dados = resp.json()
         items = dados.get("items") or []
@@ -277,9 +307,15 @@ def _here_chamar(params: dict) -> tuple | None:
             pos = items[0].get("position") or {}
             lat, lon = pos.get("lat"), pos.get("lng")
             if lat is not None and lon is not None:
-                return float(lat), float(lon)
-    except (requests.RequestException, ValueError, KeyError, IndexError):
+                lat, lon = float(lat), float(lon)
+                if _dentro_da_regiao(lat, lon):
+                    return lat, lon
+                _debug("here", f"descartado por estar fora da região esperada: ({lat}, {lon}) | params={params}")
+        else:
+            _debug("here", f"0 items pra params={params}")
+    except (requests.RequestException, ValueError, KeyError, IndexError) as e:
         _ultimo_here[0] = time.monotonic()
+        _debug("here", f"exceção {type(e).__name__}: {e}")
     return None
 
 
@@ -322,13 +358,14 @@ def _photon_buscar(query: str) -> tuple | None:
     params = {
         "q": query,
         "limit": 1,
-        "lang": "pt",
         "lat": _BIAS_LAT,
         "lon": _BIAS_LON,
     }
     try:
         resp = requests.get(_PHOTON_URL, params=params, headers=_HEADERS, timeout=10)
         _ultimo_photon[0] = time.monotonic()
+        if resp.status_code != 200:
+            _debug("photon", f"status {resp.status_code} | q={query!r} | corpo={resp.text[:200]!r}")
         resp.raise_for_status()
         dados = resp.json()
         features = dados.get("features") or []
@@ -336,9 +373,15 @@ def _photon_buscar(query: str) -> tuple | None:
             coords = (features[0].get("geometry") or {}).get("coordinates")
             if coords and len(coords) == 2:
                 lon, lat = coords[0], coords[1]  # GeoJSON: [lon, lat]
-                return float(lat), float(lon)
-    except (requests.RequestException, ValueError, KeyError, IndexError):
+                lat, lon = float(lat), float(lon)
+                if _dentro_da_regiao(lat, lon):
+                    return lat, lon
+                _debug("photon", f"descartado por estar fora da região esperada: ({lat}, {lon}) | q={query!r}")
+        else:
+            _debug("photon", f"0 features pra q={query!r}")
+    except (requests.RequestException, ValueError, KeyError, IndexError) as e:
         _ultimo_photon[0] = time.monotonic()
+        _debug("photon", f"exceção {type(e).__name__}: {e}")
     return None
 
 
@@ -352,12 +395,20 @@ def _nominatim_buscar(query: str) -> tuple | None:
     try:
         resp = requests.get(_NOMINATIM_URL, params=params, headers=_HEADERS, timeout=10)
         _ultimo_nominatim[0] = time.monotonic()
+        if resp.status_code != 200:
+            _debug("nominatim", f"status {resp.status_code} | q={query!r} | corpo={resp.text[:200]!r}")
         resp.raise_for_status()
         dados = resp.json()
         if dados:
-            return float(dados[0]["lat"]), float(dados[0]["lon"])
-    except (requests.RequestException, ValueError, KeyError, IndexError):
+            lat, lon = float(dados[0]["lat"]), float(dados[0]["lon"])
+            if _dentro_da_regiao(lat, lon):
+                return lat, lon
+            _debug("nominatim", f"descartado por estar fora da região esperada: ({lat}, {lon}) | q={query!r}")
+        else:
+            _debug("nominatim", f"0 resultados pra q={query!r}")
+    except (requests.RequestException, ValueError, KeyError, IndexError) as e:
         _ultimo_nominatim[0] = time.monotonic()
+        _debug("nominatim", f"exceção {type(e).__name__}: {e}")
     return None
 
 
@@ -437,6 +488,9 @@ def _geocodificar_par(cep: str, numero: str | None, cidade: str = "Goiânia", es
         bairro = (info.get("bairro") or "").strip()
         cidade_via = (info.get("localidade") or cidade).strip()
         estado_via = (info.get("uf") or estado).strip()
+        _debug("viacep", f"{cep} -> rua={logradouro!r} bairro={bairro!r} cidade={cidade_via!r}")
+    else:
+        _debug("viacep", f"{cep} -> sem resposta/CEP não encontrado")
 
     # tentativa 2: HERE com endereço completo (rua + número + bairro)
     if logradouro:
