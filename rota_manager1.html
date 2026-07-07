@@ -1026,6 +1026,52 @@ header .badge b { color: var(--accent2); }
   }
   #admin-header .title { flex: 1; font-size: 17px; font-weight: 700; color: var(--text); font-family: var(--display); letter-spacing: .03em; }
 
+  /* ── Mapa com todas as paradas (tela cheia) ── */
+  #mapa-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 500;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  #mapa-overlay.show { display: flex; }
+  #mapa-panel {
+    background: var(--bg);
+    width: 100vw;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  #mapa-header {
+    display: flex;
+    align-items: center;
+    padding: max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+    background: var(--surface);
+  }
+  #mapa-header .title { font-size: 17px; font-weight: 700; color: var(--text); font-family: var(--display); letter-spacing: .03em; }
+  #mapa-header .subtitle { flex: 1; font-size: 12px; color: var(--muted); }
+  #mapa-body { flex: 1; position: relative; }
+  #mapa-rotas-map { position: absolute; inset: 0; }
+  .mapa-marker {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent, #f59e0b);
+    color: #1a1205;
+    font-weight: 800;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.45);
+    cursor: pointer;
+  }
+  .mapa-marker.sem-coord { background: #6b7280; color: #fff; }
+  .mapa-popup { font-family: var(--font); font-size: 12px; max-width: 220px; }
+  .mapa-popup b { display: block; margin-bottom: 2px; color: var(--accent2, #2563eb); }
+
+
   #admin-body {
     flex: 1;
     overflow-y: auto;
@@ -3163,6 +3209,22 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
   </div>
 </div>
 
+<!-- ══ MAPA COM TODAS AS PARADAS ══ -->
+<div id="mapa-overlay">
+  <div id="mapa-panel">
+    <div id="mapa-header">
+      <span class="title">🗺 Mapa da rota</span>
+      <span class="subtitle" id="mapa-subtitle"></span>
+      <button class="close-btn" onclick="fecharMapaRotas()" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="mapa-body">
+      <div id="mapa-rotas-map"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL OPÇÕES DE EXPORTAÇÃO ══ -->
 <div id="export-overlay" onclick="fecharExportModal(event)">
   <div id="export-modal">
@@ -3381,6 +3443,12 @@ Selecionar todos
       <svg viewBox="0 0 24 24"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><rect x="5" y="4" width="14" height="17" rx="2"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg>
     </span>
     <span>Lista</span>
+  </button>
+  <button class="bn-item" id="bn-mapa" onclick="abrirMapaRotas()" title="Ver todas as paradas no mapa">
+    <span class="bn-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3Z"/><path d="M9 4v13"/><path d="M15 7v13"/></svg>
+    </span>
+    <span>Mapa</span>
   </button>
   <button class="bn-item" id="bn-agrupar" onclick="agruparSelecionados()" title="Agrupar os endereços selecionados">
     <span class="bn-icon" aria-hidden="true">
@@ -5120,6 +5188,109 @@ async function otimizarRota() {
   } catch (err) {
     hideLoading();
     alert('❌ Erro ao otimizar a rota: ' + err.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  MAPA COM TODAS AS PARADAS (Mapbox GL JS)
+// ══════════════════════════════════════════════════════════
+let _mapaRotasInstance = null;
+let _mapaRotasMarkers  = [];
+
+function abrirMapaRotas() {
+  if (!_allRows.length) { alert('Nenhum endereço carregado para mostrar no mapa.'); return; }
+  document.getElementById('mapa-overlay').classList.add('show');
+  if (!_mapaRotasInstance) {
+    initMapaRotas();
+  } else {
+    renderMapaRotas();
+    setTimeout(() => _mapaRotasInstance.resize(), 60);
+  }
+}
+
+function fecharMapaRotas() {
+  document.getElementById('mapa-overlay').classList.remove('show');
+}
+
+function initMapaRotas() {
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+  _mapaRotasInstance = new mapboxgl.Map({
+    container: 'mapa-rotas-map',
+    style: 'mapbox://styles/mapbox/dark-v11',
+    center: [-49.2925, -16.7159],
+    zoom: 11,
+  });
+  _mapaRotasInstance.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  _mapaRotasInstance.on('load', () => {
+    _mapaRotasInstance.addSource('mapa-rotas-linha', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } },
+    });
+    _mapaRotasInstance.addLayer({
+      id: 'mapa-rotas-linha-layer',
+      type: 'line',
+      source: 'mapa-rotas-linha',
+      paint: {
+        'line-color': '#f59e0b',
+        'line-width': 3,
+        'line-opacity': .75,
+        'line-dasharray': [1, 1.4],
+      },
+    });
+    renderMapaRotas();
+    setTimeout(() => _mapaRotasInstance.resize(), 60);
+  });
+}
+
+function renderMapaRotas() {
+  if (!_mapaRotasInstance) return;
+
+  _mapaRotasMarkers.forEach(m => m.remove());
+  _mapaRotasMarkers = [];
+
+  const comCoord = [];
+  let semCoord = 0;
+  _allRows.forEach(row => {
+    const lat = parseFloat(row.lat);
+    const lon = parseFloat(row.lon);
+    if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+      comCoord.push({ row, lat, lon, seq: comCoord.length + 1 });
+    } else {
+      semCoord++;
+    }
+  });
+
+  comCoord.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'mapa-marker';
+    el.textContent = item.seq;
+
+    const endereco = item.row.address || item.row.group_label || item.row.endereco_original || '';
+    const popupHtml = `<div class="mapa-popup"><b>Parada ${item.seq}</b>${escHtml(endereco)}</div>`;
+
+    const marker = new mapboxgl.Marker({ element: el })
+      .setLngLat([item.lon, item.lat])
+      .setPopup(new mapboxgl.Popup({ offset: 16 }).setHTML(popupHtml))
+      .addTo(_mapaRotasInstance);
+    _mapaRotasMarkers.push(marker);
+  });
+
+  const coordsLinha = comCoord.map(item => [item.lon, item.lat]);
+  const source = _mapaRotasInstance.getSource('mapa-rotas-linha');
+  if (source) {
+    source.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coordsLinha } });
+  }
+
+  const subtitleEl = document.getElementById('mapa-subtitle');
+  if (subtitleEl) {
+    subtitleEl.textContent = `${comCoord.length} parada(s) no mapa` +
+      (semCoord > 0 ? ` — ${semCoord} sem coordenada (não aparecem)` : '');
+  }
+
+  if (coordsLinha.length > 0) {
+    const bounds = new mapboxgl.LngLatBounds();
+    coordsLinha.forEach(c => bounds.extend(c));
+    _mapaRotasInstance.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 400 });
   }
 }
 
