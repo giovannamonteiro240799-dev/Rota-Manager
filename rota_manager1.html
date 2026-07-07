@@ -1079,6 +1079,11 @@ header .badge b { color: var(--accent2); }
   }
   .mapa-marker.sem-coord { background: #6b7280; color: #fff; }
   .mapa-marker.ativo { background: #ef4444; z-index: 10; transform: scale(1.15); }
+  .minha-localizacao-marker {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #4285f4; border: 3px solid #fff;
+    box-shadow: 0 0 0 5px rgba(66,133,244,.3), 0 2px 6px rgba(0,0,0,.4);
+  }
   .mapa-popup { font-family: var(--font); font-size: 12px; max-width: 220px; }
   .mapa-popup b { display: block; margin-bottom: 2px; color: var(--accent2, #2563eb); }
 
@@ -1129,6 +1134,15 @@ header .badge b { color: var(--accent2); }
     font-size: 12px; color: var(--muted); font-family: monospace;
     margin-bottom: 12px;
   }
+  #parada-sheet .sheet-nav-info {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; font-weight: 700; color: #2563eb;
+    background: rgba(37,99,235,.1);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: -4px 0 12px;
+  }
+  #parada-sheet .sheet-nav-info.erro { color: #ef4444; background: rgba(239,68,68,.1); }
   #parada-sheet .sheet-actions {
     display: flex; gap: 10px; margin-bottom: 4px;
   }
@@ -3317,6 +3331,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
           </div>
           <div class="sheet-endereco" id="sheet-endereco"></div>
           <div class="sheet-coords" id="sheet-coords"></div>
+          <div class="sheet-nav-info" id="sheet-nav-info" style="display:none;"></div>
           <div class="sheet-actions">
             <button class="sheet-btn primary" id="sheet-btn-navegar">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
@@ -5349,6 +5364,21 @@ function initMapaRotas() {
         'line-dasharray': [1, 1.4],
       },
     });
+    _mapaRotasInstance.addSource('nav-route-linha', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } },
+    });
+    _mapaRotasInstance.addLayer({
+      id: 'nav-route-linha-layer',
+      type: 'line',
+      source: 'nav-route-linha',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#2563eb',
+        'line-width': 5,
+        'line-opacity': .9,
+      },
+    });
     renderMapaRotas();
     setTimeout(() => _mapaRotasInstance.resize(), 60);
   });
@@ -5434,9 +5464,7 @@ function mostrarParadaSheet(item, el) {
     notaEl.style.display = 'none';
   }
 
-  document.getElementById('sheet-btn-navegar').onclick = () => {
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lon}`, '_blank');
-  };
+  document.getElementById('sheet-btn-navegar').onclick = () => navegarInterno(item);
   document.getElementById('sheet-btn-copiar').onclick = async () => {
     try {
       await navigator.clipboard.writeText(endereco);
@@ -5454,6 +5482,68 @@ function mostrarParadaSheet(item, el) {
 function fecharParadaSheet() {
   document.getElementById('parada-sheet').classList.remove('show');
   if (_paradaAtivaEl) { _paradaAtivaEl.classList.remove('ativo'); _paradaAtivaEl = null; }
+  const navInfo = document.getElementById('sheet-nav-info');
+  navInfo.style.display = 'none';
+  navInfo.classList.remove('erro');
+  const routeSrc = _mapaRotasInstance && _mapaRotasInstance.getSource('nav-route-linha');
+  if (routeSrc) routeSrc.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+}
+
+let _minhaLocalizacaoMarker = null;
+function atualizarMarcadorLocalizacao(lat, lon) {
+  if (!_minhaLocalizacaoMarker) {
+    const el = document.createElement('div');
+    el.className = 'minha-localizacao-marker';
+    _minhaLocalizacaoMarker = new mapboxgl.Marker({ element: el }).setLngLat([lon, lat]).addTo(_mapaRotasInstance);
+  } else {
+    _minhaLocalizacaoMarker.setLngLat([lon, lat]);
+  }
+}
+
+function navegarInterno(item) {
+  const infoEl = document.getElementById('sheet-nav-info');
+  infoEl.style.display = 'flex';
+  infoEl.classList.remove('erro');
+  infoEl.textContent = '📍 Obtendo sua localização...';
+
+  if (!navigator.geolocation) {
+    infoEl.classList.add('erro');
+    infoEl.textContent = 'Geolocalização não suportada neste navegador.';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const origLat = pos.coords.latitude;
+    const origLon = pos.coords.longitude;
+    atualizarMarcadorLocalizacao(origLat, origLon);
+    infoEl.textContent = '🧭 Calculando rota...';
+
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${origLon},${origLat};${item.lon},${item.lat}?geometries=geojson&overview=full&access_token=${MAPA_ROTAS_TOKEN}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      const rota = data.routes && data.routes[0];
+      if (!rota) throw new Error('sem rota');
+
+      const source = _mapaRotasInstance.getSource('nav-route-linha');
+      source.setData({ type: 'Feature', geometry: rota.geometry });
+
+      const distKm = (rota.distance / 1000).toFixed(1);
+      const durMin = Math.round(rota.duration / 60);
+      infoEl.classList.remove('erro');
+      infoEl.textContent = `🧭 ${distKm} km · ${durMin} min até a parada`;
+
+      const bounds = new mapboxgl.LngLatBounds();
+      rota.geometry.coordinates.forEach(c => bounds.extend(c));
+      _mapaRotasInstance.fitBounds(bounds, { padding: 70, duration: 500 });
+    } catch (err) {
+      infoEl.classList.add('erro');
+      infoEl.textContent = 'Não foi possível calcular a rota até essa parada.';
+    }
+  }, () => {
+    infoEl.classList.add('erro');
+    infoEl.textContent = 'Permissão de localização negada ou indisponível.';
+  }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
 // Mantém função vazia para não quebrar referências antigas
