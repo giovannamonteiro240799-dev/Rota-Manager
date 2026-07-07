@@ -1036,13 +1036,25 @@ def _osrm_otimizar_sequencia(coords: list[tuple[float, float]]) -> list[int] | N
     coord_str = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in coords)
     url = f"{OSRM_BASE_URL}/trip/v1/driving/{coord_str}"
     params = {"source": "first", "roundtrip": "false", "overview": "false"}
+    # O servidor de demonstração do OSRM fica atrás de uma proteção anti-bot
+    # que costuma barrar requisições com o User-Agent padrão do `requests`
+    # (ex: "python-requests/2.x"). Um UA de navegador evita esse bloqueio.
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"),
+        "Accept": "application/json",
+    }
 
     try:
-        r = requests.get(url, params=params, timeout=20)
-        r.raise_for_status()
+        r = requests.get(url, params=params, headers=headers, timeout=30)
+        status = r.status_code
+        if status != 200:
+            print(f"  [OSRM] HTTP {status} — corpo: {r.text[:300]!r}")
+            return None
         data = r.json()
     except requests.exceptions.RequestException as e:
-        print(f"  [OSRM] falha na chamada: {e}")
+        print(f"  [OSRM] falha na chamada: {type(e).__name__}: {e}")
         return None
 
     if data.get("code") != "Ok":

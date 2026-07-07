@@ -8,6 +8,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1054,6 +1056,14 @@ header .badge b { color: var(--accent2); }
   }
   #mapa-header .title { font-size: 17px; font-weight: 700; color: var(--text); font-family: var(--display); letter-spacing: .03em; }
   #mapa-header .subtitle { flex: 1; font-size: 12px; color: var(--muted); }
+  #mapa-header .close-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; flex-shrink: 0;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--muted); cursor: pointer; line-height: 1; transition: .15s;
+  }
+  #mapa-header .close-btn svg { width: 18px; height: 18px; }
+  #mapa-header .close-btn:hover { color: var(--text); border-color: var(--border); background: var(--surface2); }
   #mapa-body { flex: 1; position: relative; }
   #mapa-rotas-map { position: absolute; inset: 0; }
   .mapa-marker {
@@ -5194,6 +5204,7 @@ async function otimizarRota() {
 // ══════════════════════════════════════════════════════════
 //  MAPA COM TODAS AS PARADAS (Mapbox GL JS)
 // ══════════════════════════════════════════════════════════
+const MAPA_ROTAS_TOKEN = 'pk.eyJ1IjoibW9pc2Vzc2VuanVpem8iLCJhIjoiY21xOHRzOXZyMDFidTJyb2x0Zml5a2FxNyJ9.EHf8W94vDiim9_EDVGlP1g';
 let _mapaRotasInstance = null;
 let _mapaRotasMarkers  = [];
 
@@ -5213,7 +5224,7 @@ function fecharMapaRotas() {
 }
 
 function initMapaRotas() {
-  mapboxgl.accessToken = MAPBOX_TOKEN;
+  mapboxgl.accessToken = MAPA_ROTAS_TOKEN;
   _mapaRotasInstance = new mapboxgl.Map({
     container: 'mapa-rotas-map',
     style: 'mapbox://styles/mapbox/dark-v11',
