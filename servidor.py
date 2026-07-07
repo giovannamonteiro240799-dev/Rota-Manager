@@ -50,6 +50,8 @@ ANJUN_SCRIPT   = "csv_para_rota_xlsx.py"
 HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M")
 HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
 
+OSRM_BASE_URL  = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org")
+
 GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY")
 GOOGLE_VISION_URL     = "https://vision.googleapis.com/v1/images:annotate"
 
@@ -1014,6 +1016,52 @@ def ler_processado():
     return rows, headers
 
 # ═══════════════════════════════════════════════════════════════════
+#  OTIMIZAÇÃO DE ROTA (OSRM /trip/)
+# ═══════════════════════════════════════════════════════════════════
+
+def _osrm_otimizar_sequencia(coords: list[tuple[float, float]]) -> list[int] | None:
+    """
+    Recebe uma lista de (lat, lon) e devolve a ordem otimizada dos ÍNDICES
+    originais (mesmo tamanho da entrada), usando o serviço público OSRM
+    /trip/ (baseado em OpenStreetMap). O primeiro ponto da lista é fixado
+    como início da rota (source=first) e não faz retorno ao ponto de
+    partida (roundtrip=false).
+
+    Retorna None se o serviço falhar ou a resposta vier inconsistente —
+    nesse caso o chamador deve manter a ordem original.
+    """
+    if len(coords) < 2:
+        return list(range(len(coords)))
+
+    coord_str = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in coords)
+    url = f"{OSRM_BASE_URL}/trip/v1/driving/{coord_str}"
+    params = {"source": "first", "roundtrip": "false", "overview": "false"}
+
+    try:
+        r = requests.get(url, params=params, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+    except requests.exceptions.RequestException as e:
+        print(f"  [OSRM] falha na chamada: {e}")
+        return None
+
+    if data.get("code") != "Ok":
+        print(f"  [OSRM] resposta inesperada: {data.get('code')} — {data.get('message', '')}")
+        return None
+
+    waypoints = data.get("waypoints", [])
+    if len(waypoints) != len(coords):
+        print("  [OSRM] número de waypoints não bate com a entrada.")
+        return None
+
+    # waypoints[i]['waypoint_index'] = posição do ponto i na rota otimizada
+    try:
+        ordem = sorted(range(len(coords)), key=lambda i: waypoints[i]["waypoint_index"])
+    except (KeyError, TypeError):
+        return None
+    return ordem
+
+# ═══════════════════════════════════════════════════════════════════
 #  BOOTSTRAP DO ADMIN
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1560,6 +1608,53 @@ async def pipeline(request: Request):
     except Exception as e:
         print(f"  [PIPELINE] ❌ {e}")
         return err_json(str(e))
+
+@app.post("/rota/otimizar")
+async def rota_otimizar(request: Request):
+    """
+    Reordena os endereços já carregados na sessão pela sequência mais
+    eficiente de entrega, calculada via OSRM (dados OpenStreetMap).
+    Endereços sem coordenada válida são mantidos, mas empurrados pro
+    final da lista (não entram no cálculo de otimização).
+    """
+    sess = _sessao_ou_401(request)
+    if sess["dados"] is None:
+        return err_json("Nenhum dado processado ainda.", 404)
+    rows, headers = sess["dados"]
+
+    com_coord = []
+    sem_coord = []
+    for row in rows:
+        try:
+            lat = float(row.get("lat") or "")
+            lon = float(row.get("lon") or "")
+            com_coord.append((row, lat, lon))
+        except (TypeError, ValueError):
+            sem_coord.append(row)
+
+    if len(com_coord) < 2:
+        return err_json("É necessário pelo menos 2 endereços com coordenadas válidas para otimizar a rota.")
+
+    coords = [(lat, lon) for _, lat, lon in com_coord]
+    ordem = _osrm_otimizar_sequencia(coords)
+    if ordem is None:
+        return err_json(
+            "Não foi possível calcular a rota otimizada agora (serviço OSRM indisponível ou fora do ar). "
+            "Tente novamente em instantes.", 502
+        )
+
+    rows_otimizadas = [com_coord[i][0] for i in ordem] + sem_coord
+    sess["dados"] = (rows_otimizadas, headers)
+
+    print(f"  [OTIMIZAR] {sess['usuario']} otimizou {len(com_coord)} paradas "
+          f"({len(sem_coord)} sem coordenada ficaram no final)")
+
+    return ok_json({
+        "ok": True,
+        "rows": rows_otimizadas,
+        "headers": headers,
+        "sem_coordenadas": len(sem_coord),
+    })
 
 # ═══════════════════════════════════════════════════════════════════
 #  ROTAS  ──  DELETE

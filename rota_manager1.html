@@ -3098,7 +3098,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <div id="extracao-lista"></div>
 
       <div id="extracao-acoes">
-        <button class="btn btn-primary" onclick="extracaoBaixarXLSX()">⬇ Baixar XLSX</button>
+        <button class="btn btn-primary" onclick="extracaoBaixarCSV()">⬇ Baixar CSV</button>
         <button class="btn" onclick="extracaoEnviarParaAnjun()">📥 Enviar direto pro Anjun (geocodificar)</button>
         <button class="btn" onclick="extracaoLimpar()">Limpar</button>
       </div>
@@ -3388,6 +3388,12 @@ Selecionar todos
     </span>
     <span>Agrupar</span>
     <span class="bn-badge" id="bn-agrupar-badge">0</span>
+  </button>
+  <button class="bn-item" id="bn-otimizar" onclick="otimizarRota()" title="Reordenar endereços pela sequência mais eficiente">
+    <span class="bn-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a4 4 0 0 0 4-4V9a4 4 0 0 0-4-4H8"/></svg>
+    </span>
+    <span>Otimizar</span>
   </button>
   <button class="bn-item" id="bn-exportar" onclick="abrirExportModal()" title="Exportar planilha">
     <span class="bn-icon" aria-hidden="true">
@@ -5092,6 +5098,31 @@ alert('❌ Erro: ' + err.message);
 }
 }
 
+async function otimizarRota() {
+  if (!_allRows.length) { alert('Nenhum endereço carregado para otimizar.'); return; }
+  showLoading('Calculando a sequência mais eficiente de entrega...');
+  try {
+    const r = await fetch(SERVER + '/rota/otimizar', { method: 'POST', headers: authHeaders() });
+    const d = await r.json();
+    hideLoading();
+    if (!d.ok) { alert('❌ ' + (d.erro || 'Erro ao otimizar a rota.')); return; }
+
+    _allRows = normalizarLinhas(d.rows || []);
+    renderTable(_allRows);
+    updateStats(_allRows);
+    autoSaveDraft();
+
+    if (d.sem_coordenadas > 0) {
+      alert(`✅ Rota otimizada! ${d.sem_coordenadas} endereço(s) sem coordenada válida foram deixados no final da lista.`);
+    } else {
+      alert('✅ Rota otimizada com sucesso! A sequência foi reordenada pelo caminho mais eficiente.');
+    }
+  } catch (err) {
+    hideLoading();
+    alert('❌ Erro ao otimizar a rota: ' + err.message);
+  }
+}
+
 // Mantém função vazia para não quebrar referências antigas
 async function rodarPipeline() {}
 
@@ -5638,34 +5669,9 @@ const _EXTR_HORARIO_REGEX = /\d{1,2}[:h]\d{2}/;
 const _EXTR_DISTANCIA_REGEX = /^\d+([.,]\d+)?\s?km$/;
 const _EXTR_QTD_SUFFIX_REGEX = /\s*\(\d+[^)]*\)\s*$/;
 
-// Prefixos de "lixo" de OCR que substituem o pin (📍) no começo da linha de
-// endereço: "(O)", "O ", "&", bullets, etc. Removidos em loop porque às vezes
-// vem mais de um combinado (ex.: "& O SN Avenida...").
-const _EXTR_PREFIXO_LIXO_REGEX = /^(?:📍|\(o\)|&|[>•\-]|o(?=\s))\s*/i;
-
-function _extrLimparPrefixo(str) {
-  let s = (str || '').trim();
-  let anterior;
-  do {
-    anterior = s;
-    s = s.replace(_EXTR_PREFIXO_LIXO_REGEX, '').trim();
-  } while (s !== anterior && s.length);
-  return s;
-}
-
-// Uma linha "parece nome de cliente" só se não tiver números — endereço quase
-// sempre tem número (nº da casa, apto, quadra, lote, CEP...), nome de pessoa não.
-const _EXTR_TEM_NUMERO_REGEX = /\d/;
-
 function _extrIsEndereco(linha) {
   const l = linha.toLowerCase();
-  if (_EXTR_ENDERECO_KEYWORDS.some(k => l.includes(k))) return true;
-  if (_EXTR_CEP_REGEX.test(l)) return true;
-  // Sem palavra-chave, mas com número no meio do texto (ex.: "ARACAJU 342 APTO
-  // 1004A" vindo de uma linha de endereço quebrada pelo OCR) -> trata como
-  // continuação de endereço, não como nome.
-  if (_EXTR_TEM_NUMERO_REGEX.test(l)) return true;
-  return false;
+  return _EXTR_ENDERECO_KEYWORDS.some(k => l.includes(k)) || _EXTR_CEP_REGEX.test(l);
 }
 
 function _extrIsIgnoravel(linha) {
@@ -5687,14 +5693,9 @@ function _extrParseCard(linhas) {
   function finalizarCardSeCompleto() {
     const nome = nomeBuffer ? nomeBuffer.replace(_EXTR_QTD_SUFFIX_REGEX, '').trim() : null;
     let endereco = enderecoBuffer ? enderecoBuffer.trim() : null;
-    if (endereco) {
-      endereco = _extrLimparPrefixo(endereco);
-    }
-    // Antes: só salvava se tivesse nome E endereço, e descartava o resto.
-    // Agora: se achou endereço mas não achou nome, mantém o endereço sozinho
-    // (nome fica vazio) em vez de jogar tudo fora.
-    if (endereco) {
-      resultado.push({ nome: nome || '', endereco });
+    if (nome && endereco) {
+      endereco = endereco.replace(/^[📍>•\-\s]+/, '');
+      resultado.push({ nome, endereco });
     }
     nomeBuffer = null;
     enderecoBuffer = null;
@@ -5874,21 +5875,6 @@ function extracaoBaixarCSV() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-// Gera e baixa o mesmo resultado da extração, mas em .xlsx (usando a lib
-// SheetJS já carregada na página) em vez de .csv.
-function extracaoBaixarXLSX() {
-  if (!_extracaoResultados.length) return;
-  const dataOut = [['Nome', 'Endereço']];
-  for (const item of _extracaoResultados) {
-    dataOut.push([item.nome || '', item.endereco || '']);
-  }
-  const ws = XLSX.utils.aoa_to_sheet(dataOut);
-  ws['!cols'] = [{ wch: 28 }, { wch: 60 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Entregas Extraídas');
-  XLSX.writeFile(wb, `entregas_extraidas_${Date.now()}.xlsx`);
 }
 
 // Gera o CSV em memória e injeta direto no fluxo do Anjun (mesmo endpoint
