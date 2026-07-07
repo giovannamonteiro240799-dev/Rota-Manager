@@ -1079,11 +1079,6 @@ header .badge b { color: var(--accent2); }
   }
   .mapa-marker.sem-coord { background: #6b7280; color: #fff; }
   .mapa-marker.ativo { background: #ef4444; z-index: 10; transform: scale(1.15); }
-  .minha-localizacao-marker {
-    width: 18px; height: 18px; border-radius: 50%;
-    background: #4285f4; border: 3px solid #fff;
-    box-shadow: 0 0 0 5px rgba(66,133,244,.3), 0 2px 6px rgba(0,0,0,.4);
-  }
   .mapa-popup { font-family: var(--font); font-size: 12px; max-width: 220px; }
   .mapa-popup b { display: block; margin-bottom: 2px; color: var(--accent2, #2563eb); }
 
@@ -1134,97 +1129,11 @@ header .badge b { color: var(--accent2); }
     font-size: 12px; color: var(--muted); font-family: monospace;
     margin-bottom: 12px;
   }
-  #parada-sheet .sheet-nav-info {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12.5px; font-weight: 700; color: #2563eb;
-    background: rgba(37,99,235,.1);
-    border-radius: 8px;
-    padding: 8px 10px;
-    margin: -4px 0 12px;
-  }
-  #parada-sheet .sheet-nav-info.erro { color: #ef4444; background: rgba(239,68,68,.1); }
-  #parada-sheet .sheet-actions {
-    display: flex; gap: 10px; margin-bottom: 4px;
-  }
-  #parada-sheet .sheet-btn {
-    flex: 1;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 10px 8px;
-    border-radius: 10px;
-    font-size: 13px; font-weight: 700;
-    border: 1px solid var(--border);
-    background: var(--surface2);
-    color: var(--text);
-    cursor: pointer;
-    transition: .15s;
-  }
-  #parada-sheet .sheet-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
-  #parada-sheet .sheet-btn.primary { background: var(--accent, #f59e0b); color: #1a1205; border-color: transparent; }
-  #parada-sheet .sheet-btn:hover { filter: brightness(1.08); }
   #parada-sheet .sheet-nota {
     margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
     font-size: 12.5px; color: var(--muted); line-height: 1.5;
   }
   #parada-sheet .sheet-nota b { color: var(--text); }
-
-  /* ── HUD de navegação turn-by-turn (estilo Waze/Google Maps) ── */
-  #nav-hud {
-    display: none;
-    position: absolute; inset: 0;
-    z-index: 30;
-    pointer-events: none;
-  }
-  #nav-hud.show { display: block; }
-  #nav-banner {
-    position: absolute; top: 0; left: 0; right: 0;
-    background: #0f6657;
-    padding: max(18px, env(safe-area-inset-top)) 20px 18px;
-    display: flex; align-items: center; gap: 16px;
-    box-shadow: 0 6px 18px rgba(0,0,0,.35);
-  }  #nav-arrow-wrap {
-    width: 42px; height: 42px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  #nav-arrow { width: 34px; height: 34px; transition: transform .3s; }
-  #nav-instrucao-principal {
-    font-size: 21px; font-weight: 800; color: #fff;
-    line-height: 1.25;
-  }
-  #nav-depois {
-    position: absolute; top: 100%; left: 0;
-    background: #0c5548;
-    color: #fff;
-    padding: 8px 16px;
-    display: none;
-    align-items: center; gap: 8px;
-    font-size: 14px; font-weight: 700;
-    border-radius: 0 0 12px 0;
-  }
-  #nav-depois.show { display: flex; }
-  #nav-depois .nav-depois-arrow { width: 18px; height: 18px; transition: transform .3s; }
-  #nav-bottombar {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    background: #14181c;
-    padding: 12px 18px max(12px, env(safe-area-inset-bottom));
-    display: flex; align-items: center; justify-content: space-between;
-    pointer-events: auto;
-  }
-  #nav-exit-btn, #nav-recentrar-btn {
-    width: 44px; height: 44px; border-radius: 50%;
-    background: #2a2f36; border: none; color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; cursor: pointer;
-  }
-  #nav-exit-btn svg, #nav-recentrar-btn svg { width: 20px; height: 20px; }
-  #nav-info { display: flex; flex-direction: column; align-items: center; }
-  #nav-tempo { font-size: 22px; font-weight: 800; color: #f59e0b; line-height: 1.2; }
-  #nav-dist-eta { font-size: 13px; color: #cbd5e1; }
-  .nav-car-marker {
-    width: 30px; height: 30px;
-    display: flex; align-items: center; justify-content: center;
-    filter: drop-shadow(0 2px 5px rgba(0,0,0,.5));
-  }
-  .nav-car-marker svg { width: 26px; height: 26px; }
 
 
   #admin-body {
@@ -3390,42 +3299,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
           </div>
           <div class="sheet-endereco" id="sheet-endereco"></div>
           <div class="sheet-coords" id="sheet-coords"></div>
-          <div class="sheet-nav-info" id="sheet-nav-info" style="display:none;"></div>
-          <div class="sheet-actions">
-            <button class="sheet-btn primary" id="sheet-btn-navegar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-              Navegar
-            </button>
-            <button class="sheet-btn" id="sheet-btn-copiar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              Copiar
-            </button>
-          </div>
           <div class="sheet-nota" id="sheet-nota" style="display:none;"></div>
-        </div>
-      </div>
-      <div id="nav-hud">
-        <div id="nav-banner">
-          <div id="nav-arrow-wrap">
-            <svg id="nav-arrow" viewBox="0 0 24 24" fill="#fff"><path d="M12 3 L12 19 M12 3 L6 9 M12 3 L18 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-          </div>
-          <div id="nav-instrucao-principal">Obtendo localização…</div>
-          <div id="nav-depois">
-            <svg class="nav-depois-arrow" viewBox="0 0 24 24"><path d="M12 3 L12 19 M12 3 L6 9 M12 3 L18 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-            <span>Depois</span>
-          </div>
-        </div>
-        <div id="nav-bottombar">
-          <button id="nav-exit-btn" aria-label="Encerrar navegação">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <div id="nav-info">
-            <span id="nav-tempo">--</span>
-            <span id="nav-dist-eta">calculando…</span>
-          </div>
-          <button id="nav-recentrar-btn" aria-label="Recentralizar">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-          </button>
         </div>
       </div>
     </div>
@@ -5420,7 +5294,6 @@ function abrirMapaRotas() {
 function fecharMapaRotas() {
   document.getElementById('mapa-overlay').classList.remove('show');
   fecharParadaSheet();
-  if (_navAtivo) pararNavegacaoTurnByTurn();
 }
 
 function initMapaRotas() {
@@ -5446,21 +5319,6 @@ function initMapaRotas() {
         'line-width': 3,
         'line-opacity': .75,
         'line-dasharray': [1, 1.4],
-      },
-    });
-    _mapaRotasInstance.addSource('nav-route-linha', {
-      type: 'geojson',
-      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } },
-    });
-    _mapaRotasInstance.addLayer({
-      id: 'nav-route-linha-layer',
-      type: 'line',
-      source: 'nav-route-linha',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-color': '#2563eb',
-        'line-width': 5,
-        'line-opacity': .9,
       },
     });
     renderMapaRotas();
@@ -5548,17 +5406,6 @@ function mostrarParadaSheet(item, el) {
     notaEl.style.display = 'none';
   }
 
-  document.getElementById('sheet-btn-navegar').onclick = () => iniciarNavegacaoTurnByTurn(item);
-  document.getElementById('sheet-btn-copiar').onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(endereco);
-      const btn = document.getElementById('sheet-btn-copiar');
-      const original = btn.innerHTML;
-      btn.textContent = '✓ Copiado';
-      setTimeout(() => { btn.innerHTML = original; }, 1400);
-    } catch (e) { /* clipboard indisponível */ }
-  };
-
   document.getElementById('parada-sheet').classList.add('show');
   _mapaRotasInstance.flyTo({ center: [item.lon, item.lat], zoom: Math.max(_mapaRotasInstance.getZoom(), 15), duration: 400 });
 }
@@ -5566,157 +5413,6 @@ function mostrarParadaSheet(item, el) {
 function fecharParadaSheet() {
   document.getElementById('parada-sheet').classList.remove('show');
   if (_paradaAtivaEl) { _paradaAtivaEl.classList.remove('ativo'); _paradaAtivaEl = null; }
-  const navInfo = document.getElementById('sheet-nav-info');
-  navInfo.style.display = 'none';
-  navInfo.classList.remove('erro');
-  const routeSrc = _mapaRotasInstance && _mapaRotasInstance.getSource('nav-route-linha');
-  if (routeSrc) routeSrc.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
-}
-
-let _navWatchId = null;
-let _navUltimaPos = null;
-let _navUltimoFetch = 0;
-let _navAtivo = false;
-
-function iniciarNavegacaoTurnByTurn(item) {
-  fecharParadaSheet();
-  _navAtivo = true;
-  _navUltimaPos = null;
-  _navUltimoFetch = 0;
-
-  document.getElementById('nav-hud').classList.add('show');
-  document.getElementById('nav-instrucao-principal').textContent = 'Obtendo localização…';
-  document.getElementById('nav-depois').classList.remove('show');
-  document.getElementById('nav-tempo').textContent = '--';
-  document.getElementById('nav-dist-eta').textContent = 'calculando…';
-
-  if (_minhaLocalizacaoMarker) { _minhaLocalizacaoMarker.remove(); _minhaLocalizacaoMarker = null; }
-
-  document.getElementById('nav-exit-btn').onclick = pararNavegacaoTurnByTurn;
-  document.getElementById('nav-recentrar-btn').onclick = () => {
-    if (_navUltimaPos) {
-      _mapaRotasInstance.easeTo({ center: [_navUltimaPos.lon, _navUltimaPos.lat], pitch: 60, zoom: 17.5, duration: 500 });
-    }
-  };
-
-  if (!navigator.geolocation) {
-    document.getElementById('nav-instrucao-principal').textContent = 'Geolocalização não suportada neste navegador.';
-    return;
-  }
-
-  _navWatchId = navigator.geolocation.watchPosition(
-    (pos) => processarPosicaoNav(pos, item),
-    () => { document.getElementById('nav-instrucao-principal').textContent = 'Sem sinal de GPS. Verifique a permissão de localização.'; },
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
-  );
-}
-
-function pararNavegacaoTurnByTurn() {
-  _navAtivo = false;
-  if (_navWatchId !== null) { navigator.geolocation.clearWatch(_navWatchId); _navWatchId = null; }
-  document.getElementById('nav-hud').classList.remove('show');
-  document.getElementById('nav-depois').classList.remove('show');
-  if (_mapaRotasInstance) _mapaRotasInstance.easeTo({ pitch: 0, bearing: 0, duration: 500 });
-  if (_minhaLocalizacaoMarker) { _minhaLocalizacaoMarker.remove(); _minhaLocalizacaoMarker = null; }
-  const routeSrc = _mapaRotasInstance && _mapaRotasInstance.getSource('nav-route-linha');
-  if (routeSrc) routeSrc.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
-  renderMapaRotas();
-}
-
-function calcularBearing(lat1, lon1, lat2, lon2) {
-  const toRad = d => d * Math.PI / 180;
-  const toDeg = r => r * 180 / Math.PI;
-  const dLon = toRad(lon2 - lon1);
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-async function processarPosicaoNav(pos, item) {
-  if (!_navAtivo) return;
-  const lat = pos.coords.latitude, lon = pos.coords.longitude;
-  let bearing = pos.coords.heading;
-  if (bearing === null || bearing === undefined || isNaN(bearing)) {
-    bearing = _navUltimaPos ? calcularBearing(_navUltimaPos.lat, _navUltimaPos.lon, lat, lon) : 0;
-  }
-  const posAnterior = _navUltimaPos;
-  _navUltimaPos = { lat, lon };
-
-  atualizarMarcadorNav(lat, lon);
-  _mapaRotasInstance.easeTo({ center: [lon, lat], zoom: 17.5, pitch: 60, bearing, duration: 900 });
-
-  const agora = Date.now();
-  const distDesdeUltimoFetch = posAnterior ? calcularDistanciaMetros(posAnterior.lat, posAnterior.lon, lat, lon) : 999;
-  if (agora - _navUltimoFetch < 8000 && distDesdeUltimoFetch < 25) return;
-  _navUltimoFetch = agora;
-
-  try {
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lon},${lat};${item.lon},${item.lat}?geometries=geojson&overview=full&steps=true&language=pt&access_token=${MAPA_ROTAS_TOKEN}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    const rota = data.routes && data.routes[0];
-    if (!rota) return;
-
-    const routeSrc = _mapaRotasInstance.getSource('nav-route-linha');
-    if (routeSrc) routeSrc.setData({ type: 'Feature', geometry: rota.geometry });
-
-    const distKm = (rota.distance / 1000).toFixed(1).replace('.', ',');
-    const durMin = Math.max(1, Math.round(rota.duration / 60));
-    const chegada = new Date(Date.now() + rota.duration * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    document.getElementById('nav-tempo').textContent = `${durMin}min`;
-    document.getElementById('nav-dist-eta').textContent = `${distKm} km · ${chegada}`;
-
-    const steps = rota.legs && rota.legs[0] && rota.legs[0].steps;
-    if (steps && steps.length) atualizarBannerInstrucao(steps);
-
-    if (rota.distance < 30) {
-      document.getElementById('nav-instrucao-principal').textContent = '🏁 Você chegou ao destino';
-      document.getElementById('nav-depois').classList.remove('show');
-    }
-  } catch (e) { /* mantém a última instrução visível em falha temporária de rede */ }
-}
-
-function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-const NAV_MODIFIER_GRAUS = {
-  straight: 0, 'slight right': 35, right: 90, 'sharp right': 130,
-  uturn: 180, 'sharp left': -130, left: -90, 'slight left': -35, depart: 0, arrive: 0,
-};
-
-function atualizarBannerInstrucao(steps) {
-  const atual = steps[0];
-  const proximo = steps[1];
-
-  const grausAtual = atual && atual.maneuver ? (NAV_MODIFIER_GRAUS[atual.maneuver.modifier] ?? 0) : 0;
-  document.getElementById('nav-arrow').style.transform = `rotate(${grausAtual}deg)`;
-  const textoAtual = atual && atual.name ? `em direção a ${atual.name}` : (atual && atual.maneuver ? atual.maneuver.instruction : 'Siga em frente');
-  document.getElementById('nav-instrucao-principal').textContent = textoAtual;
-
-  const depoisEl = document.getElementById('nav-depois');
-  if (proximo && proximo.maneuver) {
-    const grausProx = NAV_MODIFIER_GRAUS[proximo.maneuver.modifier] ?? 0;
-    depoisEl.querySelector('.nav-depois-arrow').style.transform = `rotate(${grausProx}deg)`;
-    depoisEl.classList.add('show');
-  } else {
-    depoisEl.classList.remove('show');
-  }
-}
-
-function atualizarMarcadorNav(lat, lon) {
-  if (!_minhaLocalizacaoMarker) {
-    const el = document.createElement('div');
-    el.className = 'nav-car-marker';
-    el.innerHTML = '<svg viewBox="0 0 24 24" fill="#4285f4" stroke="#fff" stroke-width="1.4"><path d="M12 2 L20 20 L12 16 L4 20 Z"/></svg>';
-    _minhaLocalizacaoMarker = new mapboxgl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat([lon, lat]).addTo(_mapaRotasInstance);
-  } else {
-    _minhaLocalizacaoMarker.setLngLat([lon, lat]);
-  }
 }
 
 // Mantém função vazia para não quebrar referências antigas
