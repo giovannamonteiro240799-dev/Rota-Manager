@@ -1078,8 +1078,80 @@ header .badge b { color: var(--accent2); }
     cursor: pointer;
   }
   .mapa-marker.sem-coord { background: #6b7280; color: #fff; }
+  .mapa-marker.ativo { background: #ef4444; z-index: 10; transform: scale(1.15); }
   .mapa-popup { font-family: var(--font); font-size: 12px; max-width: 220px; }
   .mapa-popup b { display: block; margin-bottom: 2px; color: var(--accent2, #2563eb); }
+
+  /* ── Bottom sheet de detalhes da parada (estilo Google Maps) ── */
+  #parada-sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: var(--surface, #fff);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -6px 24px rgba(0,0,0,.35);
+    transform: translateY(105%);
+    transition: transform .28s cubic-bezier(.32,.72,0,1);
+    z-index: 20;
+    max-height: 62%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+  #parada-sheet.show { transform: translateY(0); }
+  #parada-sheet .handle {
+    width: 36px; height: 4px; border-radius: 4px;
+    background: var(--border, #ddd);
+    margin: 10px auto 6px;
+    flex-shrink: 0;
+  }
+  #parada-sheet .sheet-scroll { overflow-y: auto; padding: 4px 18px 4px; }
+  #parada-sheet .sheet-top {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  #parada-sheet .sheet-seq {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--accent, #f59e0b); color: #1a1205;
+    font-weight: 800; font-size: 13px; flex-shrink: 0;
+  }
+  #parada-sheet .sheet-close {
+    width: 30px; height: 30px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; border: none; color: var(--muted); cursor: pointer; border-radius: 50%;
+  }
+  #parada-sheet .sheet-close:hover { background: var(--surface2); color: var(--text); }
+  #parada-sheet .sheet-close svg { width: 18px; height: 18px; }
+  #parada-sheet .sheet-endereco {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    margin: 10px 0 2px; line-height: 1.35;
+  }
+  #parada-sheet .sheet-coords {
+    font-size: 12px; color: var(--muted); font-family: monospace;
+    margin-bottom: 12px;
+  }
+  #parada-sheet .sheet-actions {
+    display: flex; gap: 10px; margin-bottom: 4px;
+  }
+  #parada-sheet .sheet-btn {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    font-size: 13px; font-weight: 700;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: .15s;
+  }
+  #parada-sheet .sheet-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+  #parada-sheet .sheet-btn.primary { background: var(--accent, #f59e0b); color: #1a1205; border-color: transparent; }
+  #parada-sheet .sheet-btn:hover { filter: brightness(1.08); }
+  #parada-sheet .sheet-nota {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+    font-size: 12.5px; color: var(--muted); line-height: 1.5;
+  }
+  #parada-sheet .sheet-nota b { color: var(--text); }
 
 
   #admin-body {
@@ -3231,9 +3303,37 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     </div>
     <div id="mapa-body">
       <div id="mapa-rotas-map"></div>
+      <div id="parada-sheet">
+        <div class="handle"></div>
+        <div class="sheet-scroll">
+          <div class="sheet-top">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span class="sheet-seq" id="sheet-seq">1</span>
+              <span style="font-size:12px; color:var(--muted); font-weight:600;" id="sheet-eta">Parada</span>
+            </div>
+            <button class="sheet-close" onclick="fecharParadaSheet()" aria-label="Fechar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="sheet-endereco" id="sheet-endereco"></div>
+          <div class="sheet-coords" id="sheet-coords"></div>
+          <div class="sheet-actions">
+            <button class="sheet-btn primary" id="sheet-btn-navegar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              Navegar
+            </button>
+            <button class="sheet-btn" id="sheet-btn-copiar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copiar
+            </button>
+          </div>
+          <div class="sheet-nota" id="sheet-nota" style="display:none;"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
+
 
 <!-- ══ MODAL OPÇÕES DE EXPORTAÇÃO ══ -->
 <div id="export-overlay" onclick="fecharExportModal(event)">
@@ -5221,6 +5321,7 @@ function abrirMapaRotas() {
 
 function fecharMapaRotas() {
   document.getElementById('mapa-overlay').classList.remove('show');
+  fecharParadaSheet();
 }
 
 function initMapaRotas() {
@@ -5275,16 +5376,20 @@ function renderMapaRotas() {
     const el = document.createElement('div');
     el.className = 'mapa-marker';
     el.textContent = item.seq;
-
-    const endereco = item.row.address || item.row.group_label || item.row.endereco_original || '';
-    const popupHtml = `<div class="mapa-popup"><b>Parada ${item.seq}</b>${escHtml(endereco)}</div>`;
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      mostrarParadaSheet(item, el);
+    });
 
     const marker = new mapboxgl.Marker({ element: el })
       .setLngLat([item.lon, item.lat])
-      .setPopup(new mapboxgl.Popup({ offset: 16 }).setHTML(popupHtml))
       .addTo(_mapaRotasInstance);
     _mapaRotasMarkers.push(marker);
   });
+
+  // Clicar em área vazia do mapa fecha o sheet aberto
+  _mapaRotasInstance.off('click', fecharParadaSheet);
+  _mapaRotasInstance.on('click', fecharParadaSheet);
 
   const coordsLinha = comCoord.map(item => [item.lon, item.lat]);
   const source = _mapaRotasInstance.getSource('mapa-rotas-linha');
@@ -5303,6 +5408,52 @@ function renderMapaRotas() {
     coordsLinha.forEach(c => bounds.extend(c));
     _mapaRotasInstance.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 400 });
   }
+}
+
+let _paradaAtivaEl = null;
+
+function mostrarParadaSheet(item, el) {
+  if (_paradaAtivaEl) _paradaAtivaEl.classList.remove('ativo');
+  el.classList.add('ativo');
+  _paradaAtivaEl = el;
+
+  const endereco = item.row.address || item.row.group_label || item.row.endereco_original || 'Endereço não informado';
+  const stopsStr = item.row.group_stops || item.row.stop || '';
+
+  document.getElementById('sheet-seq').textContent = item.seq;
+  document.getElementById('sheet-eta').textContent = stopsStr ? `Seq. original ${stopsStr}` : `Parada ${item.seq} de ${_mapaRotasMarkers.length}`;
+  document.getElementById('sheet-endereco').textContent = endereco;
+  document.getElementById('sheet-coords').textContent = `Lat: ${item.lat.toFixed(6)}  ·  Lng: ${item.lon.toFixed(6)}`;
+
+  const notaEl = document.getElementById('sheet-nota');
+  const membros = Array.isArray(item.row.membros) ? item.row.membros.filter(m => m.original && m.original !== endereco) : [];
+  if (membros.length) {
+    notaEl.style.display = '';
+    notaEl.innerHTML = '<b>Endereços agrupados nesta parada:</b><br>' + membros.map(m => escHtml(m.original)).join('<br>');
+  } else {
+    notaEl.style.display = 'none';
+  }
+
+  document.getElementById('sheet-btn-navegar').onclick = () => {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lon}`, '_blank');
+  };
+  document.getElementById('sheet-btn-copiar').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(endereco);
+      const btn = document.getElementById('sheet-btn-copiar');
+      const original = btn.innerHTML;
+      btn.textContent = '✓ Copiado';
+      setTimeout(() => { btn.innerHTML = original; }, 1400);
+    } catch (e) { /* clipboard indisponível */ }
+  };
+
+  document.getElementById('parada-sheet').classList.add('show');
+  _mapaRotasInstance.flyTo({ center: [item.lon, item.lat], zoom: Math.max(_mapaRotasInstance.getZoom(), 15), duration: 400 });
+}
+
+function fecharParadaSheet() {
+  document.getElementById('parada-sheet').classList.remove('show');
+  if (_paradaAtivaEl) { _paradaAtivaEl.classList.remove('ativo'); _paradaAtivaEl = null; }
 }
 
 // Mantém função vazia para não quebrar referências antigas
