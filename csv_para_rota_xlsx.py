@@ -157,10 +157,12 @@ _FONTE_LABELS = {
     "photon_sem_bairro": "Photon (rua+número)",
     "photon_sem_numero": "Photon (rua+bairro, sem número)",
     "photon_bairro": "Photon (aproximado por bairro)",
+    "photon_cep_bruto": "Photon (CEP puro, sem rua/bairro)",
     "nominatim_completo": "Nominatim (rua+número+bairro)",
     "nominatim_sem_bairro": "Nominatim (rua+número)",
     "nominatim_sem_numero": "Nominatim (rua+bairro, sem número)",
     "nominatim_bairro": "Nominatim (aproximado por bairro)",
+    "nominatim_cep_bruto": "Nominatim (CEP puro, sem rua/bairro)",
 }
 
 
@@ -412,19 +414,63 @@ def _nominatim_buscar(query: str) -> tuple | None:
     return None
 
 
-def _consultar_viacep(cep_digits: str) -> dict | None:
+def _consultar_viacep(cep_digits: str, tentativas: int = 2) -> dict | None:
     """Consulta a base oficial de CEPs (ViaCEP) e devolve
-    logradouro/bairro/cidade/uf, ou None se o CEP não existir."""
+    logradouro/bairro/cidade/uf, ou None se o CEP não existir. Faz uma
+    segunda tentativa em caso de falha de rede/timeout, já que o ViaCEP
+    é um serviço comunitário sem SLA e às vezes tem instabilidade
+    pontual (visto na prática: mesmo CEP responde numa hora e falha
+    logo depois)."""
     url = _VIACEP_URL.format(cep=cep_digits)
+    for tentativa in range(1, tentativas + 1):
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=10)
+            resp.raise_for_status()
+            dados = resp.json()
+            if dados.get("erro"):
+                _debug("viacep", f"{cep_digits} -> CEP inexistente na base (erro=true)")
+                return None
+            return dados
+        except (requests.RequestException, ValueError, KeyError) as e:
+            _debug("viacep", f"{cep_digits} -> tentativa {tentativa}/{tentativas} falhou: {type(e).__name__}: {e}")
+            if tentativa < tentativas:
+                time.sleep(0.6)
+    return None
+
+
+def _consultar_brasilapi(cep_digits: str) -> dict | None:
+    """Segunda fonte de CEP -> endereço (BrasilAPI), usada só quando o
+    ViaCEP falha ou não conhece o CEP. Normaliza os campos pro mesmo
+    formato do ViaCEP (logradouro/bairro/localidade/uf) pra poder ser
+    usada de forma intercambiável no resto do código."""
+    url = f"https://brasilapi.com.br/api/cep/v2/{cep_digits}"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=10)
-        resp.raise_for_status()
-        dados = resp.json()
-        if dados.get("erro"):
+        if resp.status_code != 200:
+            _debug("brasilapi", f"{cep_digits} -> status {resp.status_code}")
             return None
-        return dados
-    except (requests.RequestException, ValueError, KeyError):
+        dados = resp.json()
+        return {
+            "logradouro": dados.get("street") or "",
+            "bairro": dados.get("neighborhood") or "",
+            "localidade": dados.get("city") or "",
+            "uf": dados.get("state") or "",
+        }
+    except (requests.RequestException, ValueError, KeyError) as e:
+        _debug("brasilapi", f"{cep_digits} -> exceção {type(e).__name__}: {e}")
         return None
+
+
+def _consultar_cep_info(cep_digits: str) -> dict | None:
+    """Busca logradouro/bairro do CEP tentando o ViaCEP primeiro (com
+    retry) e caindo pra BrasilAPI só se o ViaCEP não souber desse CEP.
+    Duas fontes independentes reduzem bastante a chance de ficar sem
+    rua/bairro só porque um dos dois serviços está de saco cheio."""
+    info = _consultar_viacep(cep_digits)
+    if info:
+        return info
+    _debug("viacep", f"{cep_digits} -> sem resposta, tentando BrasilAPI como reserva")
+    return _consultar_brasilapi(cep_digits)
 
 
 def _montar_niveis_cascata(rua: str, numero: str | None, bairro: str, cidade: str, estado: str) -> list:
@@ -479,8 +525,9 @@ def _geocodificar_par(cep: str, numero: str | None, cidade: str = "Goiânia", es
     if coord:
         return (*coord, "here_cep")
 
-    # ViaCEP: base oficial CEP -> endereço, usada pelas tentativas seguintes
-    info = _consultar_viacep(cep_digits)
+    # ViaCEP (com retry) -> BrasilAPI como reserva: base oficial CEP -> endereço,
+    # usada pelas tentativas seguintes
+    info = _consultar_cep_info(cep_digits)
     logradouro = bairro = ""
     cidade_via, estado_via = cidade, estado
     if info:
@@ -490,7 +537,7 @@ def _geocodificar_par(cep: str, numero: str | None, cidade: str = "Goiânia", es
         estado_via = (info.get("uf") or estado).strip()
         _debug("viacep", f"{cep} -> rua={logradouro!r} bairro={bairro!r} cidade={cidade_via!r}")
     else:
-        _debug("viacep", f"{cep} -> sem resposta/CEP não encontrado")
+        _debug("viacep", f"{cep} -> nenhuma das duas fontes de CEP conhece esse CEP")
 
     # tentativa 2: HERE com endereço completo (rua + número + bairro)
     if logradouro:
@@ -502,6 +549,16 @@ def _geocodificar_par(cep: str, numero: str | None, cidade: str = "Goiânia", es
 
     # tentativas 3 e 4: cascata Photon, depois a mesma cascata no Nominatim
     niveis = _montar_niveis_cascata(logradouro, numero, bairro, cidade_via, estado_via)
+
+    # último nível de todos: nem ViaCEP nem BrasilAPI souberam o endereço
+    # (rua/bairro vazios) — ainda dá pra tentar o CEP puro + cidade/UF, em
+    # vez de desistir só porque as duas bases de CEP falharam. Isso é o
+    # equivalente ao que o "cep_direto" fazia na versão anterior do script,
+    # mantido aqui como a última rede de segurança da cascata.
+    if not niveis:
+        query_cep = ", ".join(p for p in [cep, cidade_via, estado_via, "Brasil"] if p)
+        niveis = [("cep_bruto", query_cep)]
+
     if niveis:
         resultado = _rodar_cascata(_photon_buscar, niveis, "photon")
         if resultado:
