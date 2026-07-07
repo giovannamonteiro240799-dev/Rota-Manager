@@ -3539,12 +3539,6 @@ Selecionar todos
     <span>Agrupar</span>
     <span class="bn-badge" id="bn-agrupar-badge">0</span>
   </button>
-  <button class="bn-item" id="bn-otimizar" onclick="otimizarRota()" title="Reordenar endereços pela sequência mais eficiente">
-    <span class="bn-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a4 4 0 0 0 4-4V9a4 4 0 0 0-4-4H8"/></svg>
-    </span>
-    <span>Otimizar</span>
-  </button>
   <button class="bn-item" id="bn-exportar" onclick="abrirExportModal()" title="Exportar planilha">
     <span class="bn-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>
@@ -5246,31 +5240,6 @@ hideLoading();
 aplicarVisibilidadeDropZone();
 alert('❌ Erro: ' + err.message);
 }
-}
-
-async function otimizarRota() {
-  if (!_allRows.length) { alert('Nenhum endereço carregado para otimizar.'); return; }
-  showLoading('Calculando a sequência mais eficiente de entrega...');
-  try {
-    const r = await fetch(SERVER + '/rota/otimizar', { method: 'POST', headers: authHeaders() });
-    const d = await r.json();
-    hideLoading();
-    if (!d.ok) { alert('❌ ' + (d.erro || 'Erro ao otimizar a rota.')); return; }
-
-    _allRows = normalizarLinhas(d.rows || []);
-    renderTable(_allRows);
-    updateStats(_allRows);
-    autoSaveDraft();
-
-    if (d.sem_coordenadas > 0) {
-      alert(`✅ Rota otimizada! ${d.sem_coordenadas} endereço(s) sem coordenada válida foram deixados no final da lista.`);
-    } else {
-      alert('✅ Rota otimizada com sucesso! A sequência foi reordenada pelo caminho mais eficiente.');
-    }
-  } catch (err) {
-    hideLoading();
-    alert('❌ Erro ao otimizar a rota: ' + err.message);
-  }
 }
 
 // ══════════════════════════════════════════════════════════
