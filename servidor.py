@@ -13,7 +13,11 @@ Rodando localmente:
 Railway / Render / Fly:
     A plataforma define PORT via variável de ambiente.
     Configure também: HERE_API_KEY, BREVO_API_KEY, BREVO_SENDER_EMAIL,
-    DATA_DIR, ADMIN_PASS  (opcionais mas recomendados em produção).
+    DATA_DIR, ADMIN_PASS, ORS_API_KEY (opcionais mas recomendados em produção).
+
+    ORS_API_KEY: chave gratuita do OpenRouteService (openrouteservice.org),
+    usada em /rota/otimizar. Sem ela, cai automaticamente para o servidor
+    público de demonstração do OSRM, que não tem SLA e pode falhar.
 """
 
 import hashlib
@@ -51,6 +55,9 @@ HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YF
 HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
 
 OSRM_BASE_URL  = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org")
+
+ORS_API_KEY    = os.environ.get("ORS_API_KEY", "")
+ORS_BASE_URL   = "https://api.openrouteservice.org"
 
 GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY")
 GOOGLE_VISION_URL     = "https://vision.googleapis.com/v1/images:annotate"
@@ -1073,6 +1080,81 @@ def _osrm_otimizar_sequencia(coords: list[tuple[float, float]]) -> list[int] | N
         return None
     return ordem
 
+def _ors_otimizar_sequencia(coords: list[tuple[float, float]]) -> list[int] | None:
+    """
+    Mesmo contrato de _osrm_otimizar_sequencia: recebe (lat, lon) e devolve a
+    ordem otimizada dos ÍNDICES originais. Usa o endpoint /optimization do
+    OpenRouteService (motor VROOM), que é hospedado com SLA — muito mais
+    confiável que o servidor público de demonstração do OSRM.
+
+    Fixa o primeiro ponto da lista como início do "veículo" (não é tratado
+    como job) e todos os demais pontos entram como jobs a visitar na ordem
+    mais eficiente. Não exige retorno ao ponto de partida (sem "end").
+    """
+    if len(coords) < 2:
+        return list(range(len(coords)))
+    if not ORS_API_KEY:
+        print("  [ORS] ORS_API_KEY não configurada — pulei para o próximo serviço.")
+        return None
+
+    inicio = coords[0]
+    jobs = [
+        {"id": i, "location": [lon, lat]}
+        for i, (lat, lon) in enumerate(coords) if i != 0
+    ]
+    payload = {
+        "jobs": jobs,
+        "vehicles": [{
+            "id": 1,
+            "profile": "driving-car",
+            "start": [inicio[1], inicio[0]],
+        }],
+    }
+    headers = {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    try:
+        r = requests.post(f"{ORS_BASE_URL}/optimization", json=payload, headers=headers, timeout=30)
+        if r.status_code != 200:
+            print(f"  [ORS] HTTP {r.status_code} — corpo: {r.text[:300]!r}")
+            return None
+        data = r.json()
+    except requests.exceptions.RequestException as e:
+        print(f"  [ORS] falha na chamada: {type(e).__name__}: {e}")
+        return None
+
+    routes = data.get("routes") or []
+    if not routes:
+        print(f"  [ORS] resposta sem rotas: {str(data)[:300]}")
+        return None
+
+    steps = routes[0].get("steps", [])
+    ordem_jobs = [s["id"] for s in steps if s.get("type") == "job"]
+    if len(ordem_jobs) != len(jobs):
+        print(f"  [ORS] {len(ordem_jobs)} jobs retornados, esperava {len(jobs)}.")
+        return None
+
+    return [0] + ordem_jobs
+
+def _otimizar_sequencia(coords: list[tuple[float, float]]) -> tuple[list[int] | None, str]:
+    """
+    Escolhe o serviço de otimização: OpenRouteService primeiro (se a chave
+    estiver configurada — é o caminho recomendado e mais estável), caindo
+    para o OSRM público como último recurso caso a chave não esteja
+    configurada ou o ORS falhe. Retorna (ordem, nome_do_servico_usado).
+    """
+    if ORS_API_KEY:
+        ordem = _ors_otimizar_sequencia(coords)
+        if ordem is not None:
+            return ordem, "openrouteservice"
+        print("  [OTIMIZAR] ORS falhou, tentando OSRM público como fallback...")
+
+    ordem = _osrm_otimizar_sequencia(coords)
+    return ordem, "osrm"
+
 # ═══════════════════════════════════════════════════════════════════
 #  BOOTSTRAP DO ADMIN
 # ═══════════════════════════════════════════════════════════════════
@@ -1648,17 +1730,17 @@ async def rota_otimizar(request: Request):
         return err_json("É necessário pelo menos 2 endereços com coordenadas válidas para otimizar a rota.")
 
     coords = [(lat, lon) for _, lat, lon in com_coord]
-    ordem = _osrm_otimizar_sequencia(coords)
+    ordem, servico = _otimizar_sequencia(coords)
     if ordem is None:
         return err_json(
-            "Não foi possível calcular a rota otimizada agora (serviço OSRM indisponível ou fora do ar). "
+            "Não foi possível calcular a rota otimizada agora (serviços de roteamento indisponíveis). "
             "Tente novamente em instantes.", 502
         )
 
     rows_otimizadas = [com_coord[i][0] for i in ordem] + sem_coord
     sess["dados"] = (rows_otimizadas, headers)
 
-    print(f"  [OTIMIZAR] {sess['usuario']} otimizou {len(com_coord)} paradas "
+    print(f"  [OTIMIZAR] {sess['usuario']} otimizou {len(com_coord)} paradas via {servico} "
           f"({len(sem_coord)} sem coordenada ficaram no final)")
 
     return ok_json({
@@ -1666,6 +1748,7 @@ async def rota_otimizar(request: Request):
         "rows": rows_otimizadas,
         "headers": headers,
         "sem_coordenadas": len(sem_coord),
+        "servico": servico,
     })
 
 # ═══════════════════════════════════════════════════════════════════
