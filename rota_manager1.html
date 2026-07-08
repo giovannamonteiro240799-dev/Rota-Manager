@@ -4036,6 +4036,8 @@ let _loadingTimerId = null;
 let _loadingElapsed = 0;
 let _loadingAbort = null;
 
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
 function setLoadingStage(stepIndex, msg, title) {
 document.getElementById('loading-msg').textContent = msg;
 if (title) document.getElementById('loading-title').textContent = title;
@@ -4104,11 +4106,14 @@ setLoadingStage(1, 'Validando endereços...');
 const buffer = new Uint8Array(e.target.result);
 const {rows, headers, colLat, colLon, colCoor} = parseXlsx(buffer);
 _headers = headers; _colLat = colLat; _colLon = colLon; _colCoor = colCoor;
+
+setTimeout(() => {
 setLoadingStage(2, 'Organizando e otimizando a rota...');
 setTimeout(() => {
 const grouped = groupRows(rows);
 _allRows = sortByAddress(grouped);
 setLoadingStage(3, 'Quase lá...');
+setTimeout(() => {
 hideLoading();
 renderTable(_allRows);
 updateStats(grouped);
@@ -4117,7 +4122,9 @@ document.getElementById('file-badge').classList.add('show');
 document.getElementById('toolbar').style.display = 'flex';
 document.getElementById('bottom-nav').classList.add('show');
 document.body.classList.add('has-bottom-nav');
-}, 50);
+}, 700);
+}, 1300);
+}, 1000);
 } catch(err) {
 hideLoading();
 aplicarVisibilidadeDropZone();
@@ -5374,6 +5381,7 @@ if (!up.ok) {
   }
   throw new Error(`Falha no upload (HTTP ${up.status})${detalhe ? ': ' + detalhe : ''}`);
 }
+await sleep(900);
 
 // 2) Roda tratamento_dados.py
 setLoadingStage(2, 'Organizando e otimizando sua rota...');
@@ -5387,12 +5395,14 @@ if (pipe.status === 403) {
 }
 const pd   = await pipe.json();
 if (!pd.ok) throw new Error(pd.erro || 'Erro no pipeline');
+await sleep(1100);
 
 // 3) Busca o resultado (rota_processada_final.xlsx já lido pelo servidor)
 setLoadingStage(3, 'Carregando sua rota otimizada...');
 const res  = await fetch(SERVER + '/dados', { headers: authHeaders(), signal: sinal });
 const dado = await res.json();
 if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
+await sleep(700);
 
 // 4) Popula a tabela
     _headers = dado.headers || [];
