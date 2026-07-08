@@ -47,6 +47,8 @@
   --radius-xl: 1rem;
   --radius-full: 9999px;
   --transition: 180ms cubic-bezier(0.16,1,0.3,1);
+  --glass: rgba(18,21,42,.82);
+  --glass-border: rgba(255,255,255,.1);
 }
 [data-theme="light"] {
   --bg:        #f6f7fb;
@@ -66,6 +68,8 @@
   --shadow-sm: 0 1px 2px rgba(17,20,42,0.06);
   --shadow-md: 0 6px 20px rgba(17,20,42,0.08);
   --shadow-lg: 0 12px 36px rgba(17,20,42,0.14);
+  --glass: rgba(255,255,255,.85);
+  --glass-border: rgba(17,20,42,.08);
 }
 
 /* ===================== BASE ===================== */
@@ -1613,42 +1617,99 @@ border-radius: 2px;
 background: var(--accent2);
 flex-shrink: 0;
 }
-#drop-zone, #drop-zone-sem-acesso {
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: center;
-gap: 10px;
-padding: 36px 24px;
-cursor: pointer;
-border: 1.5px dashed var(--border);
-border-radius: var(--radius-md);
+/* ── Mapa de fundo com rota de exemplo ── */
+.map-hero {
+position: relative;
+height: 260px;
+border-radius: var(--radius-lg);
+overflow: hidden;
+border: 1px solid var(--border);
 background: var(--surface2);
-text-align: center;
+}
+.map-hero-img {
+position: absolute;
+inset: 0;
+width: 100%;
+height: 100%;
+object-fit: cover;
+display: block;
+filter: saturate(1.05);
+}
+.map-hero::after {
+content: '';
+position: absolute;
+inset: 0;
+background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.45) 100%);
+pointer-events: none;
+}
+.map-hero-label {
+position: absolute;
+top: 14px;
+left: 16px;
+z-index: 2;
+color: #fff;
+text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.map-hero-label .eyebrow {
+display: block;
+font-size: 11px;
+font-weight: 700;
+letter-spacing: .08em;
+text-transform: uppercase;
+color: var(--accent);
+margin-bottom: 4px;
+}
+.map-hero-label .headline {
+font-family: var(--display);
+font-size: 19px;
+font-weight: 700;
+}
+
+#drop-zone, #drop-zone-sem-acesso {
+position: absolute;
+left: 16px;
+right: 16px;
+bottom: 16px;
+z-index: 2;
+display: flex;
+align-items: center;
+gap: 12px;
+padding: 12px 16px;
+cursor: pointer;
+border: 1px solid var(--glass-border);
+border-radius: var(--radius-md);
+background: var(--glass);
+backdrop-filter: blur(10px);
+-webkit-backdrop-filter: blur(10px);
+box-shadow: var(--shadow-md);
+text-align: left;
 transition: border-color .15s, background .15s;
 }
 #drop-zone-sem-acesso { cursor: default; }
 #drop-zone:hover { border-color: var(--accent2); }
-#drop-zone.drag-over { border-color: var(--accent2); background: rgba(99,102,241,.07); }
+#drop-zone.drag-over { border-color: var(--accent2); background: rgba(99,102,241,.18); }
 .drop-icon {
-width: 48px;
-height: 48px;
+width: 38px;
+height: 38px;
+flex-shrink: 0;
 border-radius: var(--radius-md);
-background: rgba(99,102,241,.12);
+background: rgba(99,102,241,.15);
 color: var(--accent2);
 display: flex;
 align-items: center;
 justify-content: center;
 }
-.drop-icon svg { width: 22px; height: 22px; }
+.drop-icon svg { width: 18px; height: 18px; }
+.drop-zone-text { min-width: 0; }
 .drop-title {
 font-family: var(--display);
-font-size: 17px;
+font-size: 14px;
 font-weight: 700;
 color: var(--text);
+line-height: 1.3;
 }
-.drop-sub { font-size: 13px; color: var(--muted); }
-#server-status { font-size: 12px; color: var(--muted); }
+.drop-sub { font-size: 12px; color: var(--muted); line-height: 1.3; }
+#server-status { font-size: 12px; color: var(--muted); margin-top: 10px; }
 .import-actions {
 display: flex;
 gap: 10px;
@@ -2057,14 +2118,17 @@ order: 3;
 /* Drop zone menor */
 #import-page { padding: 16px; }
 #import-card { padding: 18px 16px 20px; max-width: 100%; }
-#drop-zone { padding: 28px 16px; gap: 8px; }
-.drop-icon { width: 40px; height: 40px; }
-.drop-icon svg { width: 18px; height: 18px; }
-.drop-title { font-size: 15px; }
-.drop-sub { font-size: 12px; text-align: center; }
+.map-hero { height: 220px; }
+.map-hero-label .headline { font-size: 16px; }
+#drop-zone, #drop-zone-sem-acesso { left: 10px; right: 10px; bottom: 10px; padding: 10px 12px; gap: 8px; }
+.drop-icon { width: 34px; height: 34px; }
+.drop-icon svg { width: 16px; height: 16px; }
+.drop-title { font-size: 13px; }
+.drop-sub { font-size: 11px; text-align: left; }
 #server-status { font-size: 11px; text-align: center; }
 .import-actions { flex-direction: column; }
 .drop-btn, .btn-clear-import { width: 100%; justify-content: center; padding: 12px 20px; }
+#drop-btn-sem-acesso { width: auto; padding: 8px 12px; font-size: 12px; }
 
 /* Stats bar: quebra linha no mobile em vez de criar scroll horizontal que vaza */
 .stats-bar {
@@ -3448,24 +3512,38 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 <div id="import-card">
 <div class="import-card-title"><span class="bar"></span>Importar Planilha de Endereços</div>
 
+<!-- Mapa de fundo com exemplo de rota (4 paradas) + card de upload sobreposto -->
+<div class="map-hero">
+<img class="map-hero-img" alt="Mapa de exemplo de rota" src="https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/path-4+6c63ff-0.85(-49.2648,-16.6799,-49.2500,-16.6900,-49.2400,-16.7050,-49.2300,-16.7200),pin-l-1+2bb583(-49.2648,-16.6799),pin-l-2+6c63ff(-49.2500,-16.6900),pin-l-3+6c63ff(-49.2400,-16.7050),pin-l-4+f5a623(-49.2300,-16.7200)/-49.2474,-16.6950,13,0,0/1000x520@2x?access_token=pk.eyJ1IjoibW9pc2Vzc2VuanVpem8iLCJhIjoiY21xOHRzOXZyMDFidTJyb2x0Zml5a2FxNyJ9.EHf8W94vDiim9_EDVGlP1g">
+<div class="map-hero-label">
+<span class="eyebrow">Roteirizador inteligente</span>
+<span class="headline">Manda suas paradas.</span>
+</div>
+
 <!-- Drop zone inicial (começa oculta — JS decide qual exibir após checar acesso, evitando flash) -->
 <div id="drop-zone" onclick="document.getElementById('file-input').click()" style="display:none">
 <div class="drop-icon">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l-5 5M12 4l5 5"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
 </div>
+<div class="drop-zone-text">
 <div class="drop-title">Selecionar Planilha</div>
 <div class="drop-sub">Arraste e solte ou clique — .xlsx, .xls, .csv</div>
-<div id="server-status">
-⚠️ Rode <b>servidor.py</b> na mesma pasta para ativar o pipeline Python
 </div>
 </div>
 
 <!-- Drop zone alternativa: acesso/assinatura vencida OU limite diário atingido (sem clique, sem botão de upload) -->
 <div id="drop-zone-sem-acesso" style="display:none">
 <div class="drop-icon" id="drop-icon-sem-acesso">🔒</div>
+<div class="drop-zone-text">
 <div class="drop-title" id="drop-titulo-sem-acesso" style="color:var(--danger)">Assinatura vencida</div>
 <div class="drop-sub" id="drop-sub-sem-acesso">Nenhuma rota ativa</div>
-<button class="drop-btn" id="drop-btn-sem-acesso" onclick="abrirAssinatura()">🔓 Realizar nova assinatura</button>
+</div>
+<button class="drop-btn" id="drop-btn-sem-acesso" onclick="event.stopPropagation();abrirAssinatura()" style="flex-shrink:0">🔓 Assinar</button>
+</div>
+</div>
+
+<div id="server-status">
+⚠️ Rode <b>servidor.py</b> na mesma pasta para ativar o pipeline Python
 </div>
 
 <div class="import-actions">
