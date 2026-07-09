@@ -1298,6 +1298,34 @@ async def perfil_gamificacao_atualizar_nome(request: Request):
         "nome_exibicao": perfil.nome_personagem or sess["usuario"],
     })
 
+@app.get("/api/perfil/ranking")
+async def perfil_ranking(request: Request):
+    """Ranking de todos os jogadores por nível (desempate por XP total)."""
+    sess = _sessao_ou_401(request)
+    users = carregar_usuarios()
+    id_para_usuario = {u.get("id"): chave for chave, u in users.items() if u.get("id")}
+
+    ranking = []
+    for p in gamification.listar_todos_perfis():
+        username = id_para_usuario.get(p.user_id, "Piloto")
+        ranking.append({
+            "user_id":       p.user_id,
+            "nome_exibicao": p.nome_personagem or username,
+            "nivel":         p.nivel,
+            "xp_total":      p.xp_total,
+        })
+    ranking.sort(key=lambda r: (-r["nivel"], -r["xp_total"]))
+    for i, r in enumerate(ranking, start=1):
+        r["posicao"] = i
+
+    minha_posicao = next((r for r in ranking if r["user_id"] == sess["user_id"]), None)
+    return ok_json({
+        "ok": True,
+        "ranking": ranking[:20],
+        "minha_posicao": minha_posicao,
+        "total_jogadores": len(ranking),
+    })
+
 @app.get("/auth/perfil")
 async def auth_perfil(request: Request):
     sess = _sessao_ou_401(request)

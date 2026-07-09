@@ -473,6 +473,18 @@ def carregar_usuario(user_id: str) -> Optional[PerfilUsuario]:
     return PerfilUsuario(**bruto) if bruto else None
 
 
+def listar_todos_perfis() -> list[PerfilUsuario]:
+    """Retorna todos os perfis de gamificação já criados, usado pro ranking."""
+    dados = _carregar_todos()
+    perfis = []
+    for bruto in dados.values():
+        try:
+            perfis.append(PerfilUsuario(**bruto))
+        except Exception:
+            continue
+    return perfis
+
+
 def salvar_usuario(perfil: PerfilUsuario):
     dados = _carregar_todos()
     dados[perfil.user_id] = perfil.model_dump()
