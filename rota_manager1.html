@@ -3617,6 +3617,16 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     </div>
 
     <div id="perfil-view-personagem" class="perfil-view">
+    <div class="profile-dd-fields" style="padding-top:18px">
+      <div class="profile-field">
+        <label>Nome do personagem</label>
+        <input class="profile-field-input" id="personagem-nome-input" type="text"
+          maxlength="20" placeholder="Deixe em branco para usar seu usuário">
+        <div class="profile-field-hint">Se vazio, usa o nome de usuário da sua conta.</div>
+        <div class="profile-field-msg" id="personagem-nome-msg"></div>
+      </div>
+      <button class="btn-profile-save" id="btn-personagem-nome-save" style="margin-top:4px" onclick="salvarNomePersonagem()">💾 Salvar nome</button>
+    </div>
     <div class="gami-panel">
       <div class="gami-row">
         <div class="gami-avatar-wrap">
@@ -7541,7 +7551,12 @@ function toggleProfileDropdown(e, triggerEl) {
   // por padrão, abre logo abaixo do botão; se não couber (ex: botão no
   // rodapé da sidebar), abre acima dele
   const abrirParaCima = rect.bottom + 100 > window.innerHeight;
-  menu.style.left = Math.max(8, rect.left) + 'px';
+  // largura do menu (já está no DOM, só invisível) — usada pra não deixar
+  // o menu vazar pra fora da tela do lado direito
+  const menuWidth = menu.offsetWidth || 180;
+  const leftMax = window.innerWidth - menuWidth - 8;
+  const leftIdeal = rect.right - menuWidth; // alinha a borda direita do menu com a do botão
+  menu.style.left = Math.max(8, Math.min(leftIdeal, leftMax)) + 'px';
   menu.style.top  = abrirParaCima ? '' : (rect.bottom + 6) + 'px';
   menu.style.bottom = abrirParaCima ? (window.innerHeight - rect.top + 6) + 'px' : '';
   menu.classList.add('open');
@@ -8101,6 +8116,20 @@ function gamiRenderPerfil(d) {
   const necessario = d.xp_para_proximo_nivel;
   const iconBase = d.icon_base_path;
 
+  // Nome do personagem: campo de edição + nome exibido no topo do modal/avatar
+  const nomeInput = document.getElementById('personagem-nome-input');
+  if (nomeInput && document.activeElement !== nomeInput) nomeInput.value = p.nome_personagem || '';
+  const nomeExibicao = d.nome_exibicao || p.nome_personagem;
+  if (nomeExibicao) {
+    const ddName = document.getElementById('profile-dd-name');
+    if (ddName) ddName.textContent = nomeExibicao;
+    const inicial = nomeExibicao[0].toUpperCase();
+    const avEl = document.getElementById('profile-avatar');
+    const ddAvEl = document.getElementById('profile-dd-avatar');
+    if (avEl) avEl.textContent = inicial;
+    if (ddAvEl) ddAvEl.textContent = inicial;
+  }
+
   document.getElementById('gami-level-badge').textContent = p.nivel;
   document.getElementById('gami-level-text').textContent = p.nivel;
   document.getElementById('gami-xp-atual').textContent = `${p.xp_atual} XP`;
@@ -8117,6 +8146,44 @@ function gamiRenderPerfil(d) {
 
   const itens = (d.itens_desbloqueados || []).map(i => ({ _icone: i.icone, _titulo: i.nome }));
   gamiRenderIconRow('gami-item-row', itens, iconBase, () => true);
+}
+
+async function salvarNomePersonagem() {
+  const input = document.getElementById('personagem-nome-input');
+  const msg   = document.getElementById('personagem-nome-msg');
+  const btn   = document.getElementById('btn-personagem-nome-save');
+  const nome = input.value.trim();
+  if (nome && (nome.length < 2 || nome.length > 20)) {
+    msg.textContent = 'O nome deve ter entre 2 e 20 caracteres.';
+    msg.className = 'profile-field-msg err';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⏳ Salvando...';
+  msg.textContent = '';
+  try {
+    const r = await fetch(SERVER + '/api/perfil/me/nome', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ nome_personagem: nome })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.textContent = '✓ Salvo!';
+      msg.className = 'profile-field-msg ok';
+      setTimeout(() => { msg.textContent = ''; }, 2500);
+      gamiCarregarPerfil();
+    } else {
+      msg.textContent = d.erro || 'Erro ao salvar.';
+      msg.className = 'profile-field-msg err';
+    }
+  } catch (e) {
+    msg.textContent = 'Falha de conexão.';
+    msg.className = 'profile-field-msg err';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar nome';
+  }
 }
 
 function gamiMostrarToast(msg, icone) {

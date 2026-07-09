@@ -137,6 +137,7 @@ class PerfilUsuario(BaseModel):
     total_pacotes: int = 0
     total_enderecos_corrigidos: int = 0
     avatar: Avatar = Avatar()
+    nome_personagem: Optional[str] = None  # apelido do personagem; se vazio, usa o nome de usuário
 
     # --- campos de controle anti-fraude ---
     criado_em: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

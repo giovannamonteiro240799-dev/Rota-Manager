@@ -1272,10 +1272,30 @@ async def perfil_gamificacao_me(request: Request):
     return ok_json({
         "ok": True,
         "perfil": perfil.model_dump(),
+        "nome_exibicao": perfil.nome_personagem or sess["usuario"],
         "xp_para_proximo_nivel": gamification.xp_necessario_para_nivel(perfil.nivel),
         "icon_base_path": gamification.ICON_BASE_PATH,
         "badges_desbloqueadas": gamification.calcular_badges_desbloqueadas(perfil.nivel),
         "itens_desbloqueados": gamification.calcular_itens_desbloqueados(perfil),
+    })
+
+@app.post("/api/perfil/me/nome")
+async def perfil_gamificacao_atualizar_nome(request: Request):
+    """Define/limpa o apelido do personagem do usuário logado. Se vazio,
+    o personagem volta a usar o nome de usuário normal."""
+    sess = _sessao_ou_401(request)
+    data = await request.json()
+    nome_novo = (data.get("nome_personagem") or "").strip()
+    if nome_novo:
+        if len(nome_novo) < 2 or len(nome_novo) > 20:
+            return err_json("O nome do personagem deve ter entre 2 e 20 caracteres.")
+    perfil = _garantir_perfil(sess["user_id"])
+    perfil.nome_personagem = nome_novo or None
+    gamification.salvar_usuario(perfil)
+    return ok_json({
+        "ok": True,
+        "msg": "Nome do personagem atualizado.",
+        "nome_exibicao": perfil.nome_personagem or sess["usuario"],
     })
 
 @app.get("/auth/perfil")
