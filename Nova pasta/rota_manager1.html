@@ -2637,70 +2637,6 @@ display: flex; align-items: center;
   color: var(--muted);
   margin-top: 2px;
 }
-
-/* ── Gamificação ── */
-.gami-panel {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.gami-row { display: flex; gap: 12px; align-items: center; }
-.gami-avatar-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
-.gami-avatar-grid {
-  width: 56px; height: 56px;
-  display: grid;
-  grid-template-columns: repeat(16, 1fr);
-  grid-template-rows: repeat(16, 1fr);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--surface2);
-  image-rendering: pixelated;
-}
-.gami-avatar-grid div { width: 100%; height: 100%; }
-.gami-level-badge {
-  position: absolute; bottom: -4px; right: -4px;
-  background: var(--accent); color: #06121f;
-  font-weight: 800; font-size: 10px;
-  width: 20px; height: 20px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  border: 2px solid var(--surface);
-}
-.gami-info { flex: 1; min-width: 0; }
-.gami-title { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
-.gami-xp-bg { background: var(--surface2); border-radius: 6px; height: 7px; overflow: hidden; }
-.gami-xp-fill {
-  height: 100%; width: 0%;
-  background: linear-gradient(90deg, var(--accent), #7ee787);
-  transition: width .6s ease;
-}
-.gami-xp-label { font-size: 10.5px; color: var(--muted); margin-top: 4px; display: flex; justify-content: space-between; }
-.gami-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
-.gami-stat-box { background: var(--surface2); border-radius: 10px; padding: 8px 6px; text-align: center; }
-.gami-stat-box .gami-num { font-size: 15px; font-weight: 800; color: var(--text); }
-.gami-stat-box .gami-label { font-size: 9.5px; color: var(--muted); margin-top: 2px; }
-.gami-section-title {
-  font-size: 10.5px; color: var(--muted); text-transform: uppercase;
-  letter-spacing: .04em; margin: 14px 0 6px;
-}
-.gami-icon-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.gami-icon-slot {
-  width: 32px; height: 32px; border-radius: 8px; background: var(--surface2);
-  border: 1px solid var(--border); display: flex; align-items: center;
-  justify-content: center; overflow: hidden; position: relative;
-}
-.gami-icon-slot img { width: 24px; height: 24px; image-rendering: pixelated; }
-.gami-icon-slot.locked { opacity: .35; filter: grayscale(1); }
-.gami-icon-slot .gami-lock { position: absolute; font-size: 9px; }
-.gami-toast {
-  position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-16px);
-  background: var(--surface); border: 1px solid var(--accent); color: var(--text);
-  padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
-  box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 1200;
-  opacity: 0; visibility: hidden; transition: opacity .25s, transform .25s;
-  display: flex; align-items: center; gap: 8px;
-}
-.gami-toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
-.gami-toast img { width: 22px; height: 22px; image-rendering: pixelated; }
-
 .profile-dd-fields {
   padding: 18px 20px;
   display: flex;
@@ -3570,31 +3506,6 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
         <div class="profile-dd-name" id="profile-dd-name">—</div>
         <div class="profile-modal-sub">Conta RotaManager</div>
       </div>
-    </div>
-    <div class="gami-panel">
-      <div class="gami-row">
-        <div class="gami-avatar-wrap">
-          <div class="gami-avatar-grid" id="gami-avatar-grid"></div>
-          <div class="gami-level-badge" id="gami-level-badge">1</div>
-        </div>
-        <div class="gami-info">
-          <p class="gami-title">Nível <span id="gami-level-text">1</span></p>
-          <div class="gami-xp-bg"><div class="gami-xp-fill" id="gami-xp-fill"></div></div>
-          <div class="gami-xp-label">
-            <span id="gami-xp-atual">0 XP</span>
-            <span id="gami-xp-necessario">100 XP</span>
-          </div>
-        </div>
-      </div>
-      <div class="gami-stats-row">
-        <div class="gami-stat-box"><div class="gami-num" id="gami-stat-paradas">0</div><div class="gami-label">Paradas</div></div>
-        <div class="gami-stat-box"><div class="gami-num" id="gami-stat-pacotes">0</div><div class="gami-label">Pacotes</div></div>
-        <div class="gami-stat-box"><div class="gami-num" id="gami-stat-enderecos">0</div><div class="gami-label">Endereços</div></div>
-      </div>
-      <div class="gami-section-title">Badges de nível</div>
-      <div class="gami-icon-row" id="gami-badge-row"></div>
-      <div class="gami-section-title">Itens conquistados</div>
-      <div class="gami-icon-row" id="gami-item-row"></div>
     </div>
     <div class="profile-dd-fields">
       <div class="profile-field">
@@ -4614,7 +4525,7 @@ if (enderecoParaBanco) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ endereco: enderecoParaBanco, lat: parseFloat(lat), lon: parseFloat(lng) })
-  }).then(r => r.json()).then(gamiProcessarResposta).catch(err => console.warn('[BANCO] Erro:', err));
+  }).catch(err => console.warn('[BANCO] Erro:', err));
 }
 });
 
@@ -5484,7 +5395,6 @@ if (pipe.status === 403) {
 }
 const pd   = await pipe.json();
 if (!pd.ok) throw new Error(pd.erro || 'Erro no pipeline');
-gamiProcessarResposta(pd);
 await sleep(1100);
 
 // 3) Busca o resultado (rota_processada_final.xlsx já lido pelo servidor)
@@ -7933,140 +7843,6 @@ function _updateSidebarUser(user, plan) {
   _applyThemeUI(document.documentElement.getAttribute('data-theme'));
 })();
 
-</script>
-
-<div class="gami-toast" id="gami-toast"></div>
-<script>
-// ═══════════════════════════════════════════════════════════════════
-//  GAMIFICAÇÃO
-// ═══════════════════════════════════════════════════════════════════
-
-const GAMI_PALETAS = {
-  masculino: { pele: "#e0a878", roupa: "#3a6ea5", cabelo: "#2b2b2b" },
-  feminino:  { pele: "#e0a878", roupa: "#c65f9a", cabelo: "#4a2c1a" },
-};
-
-// sprite simplificado 16x16 (0=vazio, 1=pele, 2=roupa, 3=cabelo)
-const GAMI_SPRITE = [
-  0,0,0,0,3,3,3,3,3,3,3,3,0,0,0,0,
-  0,0,0,3,3,3,3,3,3,3,3,3,3,0,0,0,
-  0,0,0,3,1,1,1,1,1,1,1,3,0,0,0,0,
-  0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,
-  0,0,0,1,1,3,1,1,1,3,1,1,0,0,0,0,
-  0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,
-  0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,
-  0,0,0,0,0,2,2,2,2,2,0,0,0,0,0,0,
-  0,0,0,2,2,2,2,2,2,2,2,0,0,0,0,0,
-  0,0,2,2,2,2,2,2,2,2,2,2,0,0,0,0,
-  0,0,2,2,2,0,0,0,0,2,2,2,0,0,0,0,
-  0,0,2,2,2,0,0,0,0,2,2,2,0,0,0,0,
-  0,0,1,1,2,0,0,0,0,2,1,1,0,0,0,0,
-  0,0,1,1,2,0,0,0,0,2,1,1,0,0,0,0,
-  0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,
-  0,0,3,3,0,0,0,0,0,0,3,3,0,0,0,0,
-];
-
-function gamiRenderAvatar(genero) {
-  const grid = document.getElementById('gami-avatar-grid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  const paleta = GAMI_PALETAS[genero] || GAMI_PALETAS.masculino;
-  const cores = { 0: 'transparent', 1: paleta.pele, 2: paleta.roupa, 3: paleta.cabelo };
-  GAMI_SPRITE.forEach(v => {
-    const px = document.createElement('div');
-    px.style.background = cores[v];
-    grid.appendChild(px);
-  });
-}
-
-function gamiRenderIconRow(elId, items, iconBase, desbloqueadoFn) {
-  const row = document.getElementById(elId);
-  if (!row) return;
-  row.innerHTML = '';
-  if (!items.length) {
-    row.innerHTML = '<span style="font-size:11px;color:var(--muted)">Nenhum ainda — continue importando rotas!</span>';
-    return;
-  }
-  items.forEach(item => {
-    const desbloqueado = desbloqueadoFn(item);
-    const slot = document.createElement('div');
-    slot.className = 'gami-icon-slot' + (desbloqueado ? '' : ' locked');
-    slot.title = item._titulo || '';
-    slot.innerHTML = `<img src="${iconBase}${item._icone}" onerror="this.style.display='none'">`;
-    if (!desbloqueado) slot.innerHTML += `<span class="gami-lock">🔒</span>`;
-    row.appendChild(slot);
-  });
-}
-
-async function gamiCarregarPerfil() {
-  try {
-    const r = await fetch(SERVER + '/api/perfil/me', { headers: authHeaders() });
-    if (!r.ok) return;
-    const d = await r.json();
-    if (!d.ok) return;
-    gamiRenderPerfil(d);
-  } catch (e) { console.warn('[gamificação] falha ao carregar perfil:', e); }
-}
-
-function gamiRenderPerfil(d) {
-  const p = d.perfil;
-  const necessario = d.xp_para_proximo_nivel;
-  const iconBase = d.icon_base_path;
-
-  document.getElementById('gami-level-badge').textContent = p.nivel;
-  document.getElementById('gami-level-text').textContent = p.nivel;
-  document.getElementById('gami-xp-atual').textContent = `${p.xp_atual} XP`;
-  document.getElementById('gami-xp-necessario').textContent = `${necessario} XP`;
-  document.getElementById('gami-xp-fill').style.width = `${Math.min(100, (p.xp_atual / necessario) * 100)}%`;
-  document.getElementById('gami-stat-paradas').textContent = p.total_paradas;
-  document.getElementById('gami-stat-pacotes').textContent = p.total_pacotes;
-  document.getElementById('gami-stat-enderecos').textContent = p.total_enderecos_corrigidos;
-
-  gamiRenderAvatar(p.avatar && p.avatar.genero);
-
-  const badges = (d.badges_desbloqueadas || []).map(icone => ({ _icone: icone, _titulo: 'Badge desbloqueada' }));
-  gamiRenderIconRow('gami-badge-row', badges, iconBase, () => true);
-
-  const itens = (d.itens_desbloqueados || []).map(i => ({ _icone: i.icone, _titulo: i.nome }));
-  gamiRenderIconRow('gami-item-row', itens, iconBase, () => true);
-}
-
-function gamiMostrarToast(msg, icone) {
-  const toast = document.getElementById('gami-toast');
-  if (!toast) return;
-  toast.innerHTML = (icone ? `<img src="/static/icons/${icone}">` : '') + `<span>${msg}</span>`;
-  toast.classList.add('show');
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => toast.classList.remove('show'), 3200);
-}
-
-// Chamado pelo /pipeline e pelo /coords/salvar quando a resposta trouxer
-// o campo "gamificacao" (ver servidor.py: _conceder_xp_rota / _conceder_xp_endereco)
-function gamiProcessarResposta(resp) {
-  if (!resp || !resp.gamificacao) return;
-  const g = resp.gamificacao;
-  if (g.xp_ganho > 0) {
-    if (g.subiu_de_nivel) {
-      const badgeNova = (g.novas_badges && g.novas_badges[0]) || null;
-      gamiMostrarToast(`🎉 Subiu para o nível ${g.perfil.nivel}! (+${g.xp_ganho} XP)`, badgeNova);
-    } else {
-      gamiMostrarToast(`+${g.xp_ganho} XP`, 'xp_moeda.png');
-    }
-  }
-  if (g.novos_itens && g.novos_itens.length) {
-    g.novos_itens.forEach(item => gamiMostrarToast(`Novo item: ${item.nome}!`, item.icone));
-  }
-  // atualiza o painel se o modal de perfil estiver aberto
-  const overlay = document.getElementById('profile-modal-overlay');
-  if (overlay && overlay.classList.contains('open')) gamiCarregarPerfil();
-}
-
-// recarrega o painel de gamificação toda vez que o perfil é aberto
-const _gamiCarregarOriginal = carregarPerfilUsuario;
-carregarPerfilUsuario = function () {
-  gamiCarregarPerfil();
-  return _gamiCarregarOriginal();
-};
 </script>
 
 </body>

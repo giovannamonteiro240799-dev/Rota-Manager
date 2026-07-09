@@ -1,0 +1,15 @@
+Créditos dos ícones usados na gamificação
+==========================================
+
+Badges de nível e alguns itens (moedas, poções, armas, cajado, troféu do
+dragão) vêm do pack "32rogues" de Seth Boyles (32x32, licença permite uso
+comercial e não-comercial, proíbe uso em NFT/blockchain e em treinamento
+de IA/generative AI; não pode ser redistribuído/revendido como asset pack).
+Copyright 2024 Seth Boyles. https://sethbb.itch.io/32rogues
+
+O item raro "Caçador de Demônios" (nível de endereços >= 1000) usa um frame
+do "Tiny RPG Character Asset Pack 02 - Free Demon_A & Blood Monster_A".
+Esse pack não veio com um arquivo de licença explícito no download —
+antes de publicar em produção, vale a pena checar os termos na página do
+itch.io de onde ele foi baixado (packs "free" desse autor geralmente pedem
+apenas crédito, mas confirme antes de usar comercialmente).

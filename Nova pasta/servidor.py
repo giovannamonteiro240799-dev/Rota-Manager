@@ -37,9 +37,6 @@ import uvicorn
 from fastapi import FastAPI, Request, Header, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-
-import gamification
 
 # ═══════════════════════════════════════════════════════════════════
 #  CONFIGURAÇÃO
@@ -131,59 +128,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
-# ─── Gamificação ────────────────────────────────────────────────────
-# (o include_router() fica lá embaixo, DEPOIS da rota /api/perfil/me —
-# senão a rota genérica /api/perfil/{user_id} do gamification.router
-# "rouba" a palavra "me" como se fosse um user_id)
-
-_ICONS_DIR = Path(__file__).parent / "static" / "icons"
-if _ICONS_DIR.is_dir():
-    app.mount("/static/icons", StaticFiles(directory=str(_ICONS_DIR)), name="icons")
-
-
-def _garantir_perfil(user_id: str) -> "gamification.PerfilUsuario":
-    """Cria o perfil de gamificação na primeira vez que o usuário aparece."""
-    perfil = gamification.carregar_usuario(user_id)
-    if perfil is None:
-        perfil = gamification.PerfilUsuario(user_id=user_id)
-        gamification.salvar_usuario(perfil)
-    return perfil
-
-
-def _conceder_xp_rota(user_id: str, paradas: int, pacotes: int, rota_hash: str) -> dict | None:
-    """Concede XP por rota concluída. Nunca deixa um erro de gamificação
-    derrubar o pipeline principal — só loga e segue."""
-    try:
-        _garantir_perfil(user_id)
-        payload = gamification.RegistrarRotaPayload(
-            user_id=user_id, paradas_concluidas=paradas,
-            pacotes_entregues=pacotes, rota_hash=rota_hash,
-        )
-        resultado = gamification.registrar_conclusao_rota(payload)
-        if resultado.xp_ganho:
-            print(f"  [XP] {user_id} +{resultado.xp_ganho} XP (rota) "
-                  f"— nível {resultado.perfil.nivel}"
-                  f"{' 🎉 subiu de nível!' if resultado.subiu_de_nivel else ''}")
-        return resultado.model_dump()
-    except Exception as e:
-        print(f"  [XP] ⚠️ falha ao conceder XP de rota pra {user_id}: {e}")
-        return None
-
-
-def _conceder_xp_endereco(user_id: str, endereco: str) -> dict | None:
-    try:
-        _garantir_perfil(user_id)
-        payload = gamification.RegistrarEnderecoPayload(user_id=user_id, enderecos=[endereco])
-        resultado = gamification.registrar_endereco_corrigido(payload)
-        if resultado.xp_ganho:
-            print(f"  [XP] {user_id} +{resultado.xp_ganho} XP (endereço) "
-                  f"— nível {resultado.perfil.nivel}"
-                  f"{' 🎉 subiu de nível!' if resultado.subiu_de_nivel else ''}")
-        return resultado.model_dump()
-    except Exception as e:
-        print(f"  [XP] ⚠️ falha ao conceder XP de endereço pra {user_id}: {e}")
-        return None
 
 def ok_json(data: dict, status: int = 200) -> JSONResponse:
     return JSONResponse(content=data, status_code=status)
@@ -1263,21 +1207,6 @@ async def auth_status(request: Request):
     tem_acesso = bool(sess.get("is_admin")) or usuario_tem_acesso_ativo(sess["usuario"])
     return ok_json({"ok": True, "tem_acesso": tem_acesso, "is_admin": bool(sess.get("is_admin"))})
 
-@app.get("/api/perfil/me")
-async def perfil_gamificacao_me(request: Request):
-    """Atalho pro perfil de gamificação do usuário logado (sem precisar
-    que o frontend conheça o user_id — só o token de sessão)."""
-    sess = _sessao_ou_401(request)
-    perfil = _garantir_perfil(sess["user_id"])
-    return ok_json({
-        "ok": True,
-        "perfil": perfil.model_dump(),
-        "xp_para_proximo_nivel": gamification.xp_necessario_para_nivel(perfil.nivel),
-        "icon_base_path": gamification.ICON_BASE_PATH,
-        "badges_desbloqueadas": gamification.calcular_badges_desbloqueadas(perfil.nivel),
-        "itens_desbloqueados": gamification.calcular_itens_desbloqueados(perfil),
-    })
-
 @app.get("/auth/perfil")
 async def auth_perfil(request: Request):
     sess = _sessao_ou_401(request)
@@ -1544,17 +1473,13 @@ async def admin_rejeitar_plano_route(request: Request):
 async def coords_salvar(request: Request):
     sess = _sessao_ou_401(request)
     data = await request.json()
-    endereco = data.get("endereco", "")
     ok, msg, info = banco_coords_salvar_coord(
-        endereco, data.get("lat", 0), data.get("lon", 0),
+        data.get("endereco", ""), data.get("lat", 0), data.get("lon", 0),
         sess.get("usuario", "(desconhecido)")
     )
     resposta = {"ok": ok, "msg": msg}
     if ok:
         resposta.update(info)
-        xp_resultado = _conceder_xp_endereco(sess["user_id"], endereco)
-        if xp_resultado:
-            resposta["gamificacao"] = xp_resultado
     else:
         resposta["erro"] = msg
     return ok_json(resposta)
@@ -1578,8 +1503,6 @@ async def upload(request: Request, arquivo: UploadFile = File(...)):
     if len(contents) <= 4:
         return err_json("Arquivo vazio ou inválido.")
     Path(ARQ_ENTRADA).write_bytes(contents)
-    # guarda o hash do arquivo original pra dar XP uma única vez por rota (anti-fraude)
-    sess["_rota_hash"] = gamification.calcular_hash_rota(contents)
     print(f"  [UPLOAD] {ARQ_ENTRADA} salvo ({len(contents)} bytes) — usuário: {sess['usuario']}")
     return ok_json({"ok": True})
 
@@ -1773,19 +1696,7 @@ async def pipeline(request: Request):
             usuario_consumir_credito_avulso_se_necessario(sess["usuario"])
             registrar_importacao_hoje(sess["usuario"])
         print(f"  [PIPELINE] ✅ {len(rows)} endereços carregados")
-
-        xp_resultado = None
-        rota_hash = sess.get("_rota_hash")
-        if rota_hash:
-            paradas = len(rows)
-            pacotes = sum(int(r.get("group_size") or 1) for r in rows)
-            xp_resultado = _conceder_xp_rota(sess["user_id"], paradas, pacotes, rota_hash)
-            sess["_rota_hash"] = None  # cada upload só pode gerar XP uma vez
-
-        resposta = {"ok": True, "total": len(rows)}
-        if xp_resultado:
-            resposta["gamificacao"] = xp_resultado
-        return ok_json(resposta)
+        return ok_json({"ok": True, "total": len(rows)})
     except subprocess.TimeoutExpired:
         return err_json("Timeout: o pipeline demorou mais que o esperado.")
     except Exception as e:
@@ -1861,10 +1772,6 @@ async def historico_apagar(request: Request, nome: str = ""):
 # ═══════════════════════════════════════════════════════════════════
 #  MAIN
 # ═══════════════════════════════════════════════════════════════════
-
-# Registrado por último de propósito — ver comentário lá em cima, perto
-# do app.mount de /static/icons.
-app.include_router(gamification.router)
 
 if __name__ == "__main__":
     print(f"""
