@@ -1889,88 +1889,46 @@ async def rota_otimizar(request: Request):
     })
 
 # ═══════════════════════════════════════════════════════════════════
-#  LOTES DE TERCEIROS (Aparecida de Goiânia / Senador Canedo)
+#  LOTES DE TERCEIROS (Aparecida de Goiânia / Senador Canedo / Goiânia)
 #  ──────────────────────────────────────────────────────────────────
 #  Proxy servidor-a-servidor para os vector tiles (.pbf) de quadra/lote
-#  usados no Route Planner. Evita problema de CORS no navegador e
-#  esconde o token do usuário final. O token é obtido em /api/tiles-token
-#  (sem autenticação, válido por 3600s) e reaproveitado em memória
-#  enquanto não expirar.
+#  usados no Route Planner. Evita problema de CORS no navegador, esconde
+#  o token do usuário final, e usa um cache SQLite PERMANENTE (em
+#  DATA_DIR, mesmo Volume do Railway usado pro resto do app) — depois do
+#  primeiro request (ou de rodar warmup_lotes.py), o tile nunca mais
+#  precisa ser buscado de novo no routeplanner.com.br.
+#  Lógica de cache/fetch fica em lotes_terceiros_cache.py, compartilhada
+#  com o script de warm-up (warmup_lotes.py).
 # ═══════════════════════════════════════════════════════════════════
 
-ROUTEPLANNER_BASE = "https://routeplanner.com.br/api"
-
-LOTES_TERCEIROS_CIDADES = {
-    "aparecida": "lotes-tiles",           # sem sufixo = Aparecida de Goiânia
-    "canedo":    "lotes-tiles-canedo",
-}
-
-_lotes_token_cache = {"token": None, "expires_at": 0.0}
-_lotes_token_lock = threading.Lock()
-
-_LOTES_HEADERS = {
-    "Referer": "https://routeplanner.com.br/",
-    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"),
-}
-
-
-def _obter_token_lotes_terceiros():
-    """Reaproveita o token em cache se ainda tiver folga de 60s antes de
-    expirar; senão busca um novo em /api/tiles-token."""
-    agora = datetime.now().timestamp()
-    with _lotes_token_lock:
-        if _lotes_token_cache["token"] and _lotes_token_cache["expires_at"] - agora > 60:
-            return _lotes_token_cache["token"]
-
-        try:
-            r = requests.get(
-                f"{ROUTEPLANNER_BASE}/tiles-token",
-                headers=_LOTES_HEADERS,
-                timeout=10,
-            )
-            r.raise_for_status()
-            data = r.json()
-        except requests.exceptions.RequestException as e:
-            print(f"  [LOTES-TERCEIROS] falha ao obter token: {type(e).__name__}: {e}")
-            return None
-
-        _lotes_token_cache["token"] = data["token"]
-        _lotes_token_cache["expires_at"] = agora + data.get("expires_in", 3600)
-        return _lotes_token_cache["token"]
+from starlette.concurrency import run_in_threadpool
+from lotes_terceiros_cache import get_tile as _lotes_get_tile
+from lotes_terceiros_cache import LOTES_TERCEIROS_CIDADES as _LOTES_CIDADES
 
 
 @app.get("/api/lotes-terceiros/{cidade}/{z}/{x}/{y}.pbf")
 async def lotes_terceiros_tile(cidade: str, z: int, x: int, y: int):
-    """Repassa um vector tile (.pbf) de quadra/lote de Aparecida de Goiânia
-    ou Senador Canedo, obtido via proxy do Route Planner."""
-    endpoint = LOTES_TERCEIROS_CIDADES.get(cidade)
-    if endpoint is None:
-        raise HTTPException(status_code=400, detail="Cidade inválida (use 'aparecida' ou 'canedo').")
+    """Repassa um vector tile (.pbf) de quadra/lote de Aparecida de Goiânia,
+    Senador Canedo ou Goiânia — lendo do cache permanente sempre que possível
+    e só caindo pro Route Planner se o tile nunca foi visto antes."""
+    if cidade not in _LOTES_CIDADES:
+        raise HTTPException(status_code=400, detail="Cidade inválida (use 'aparecida', 'canedo' ou 'goiania').")
 
-    token = _obter_token_lotes_terceiros()
-    if token is None:
-        raise HTTPException(status_code=502, detail="Falha ao obter token de acesso.")
-
-    url = f"{ROUTEPLANNER_BASE}/{endpoint}/{z}/{x}/{y}.pbf"
     try:
-        r = requests.get(url, params={"token": token}, headers=_LOTES_HEADERS, timeout=10)
-    except requests.exceptions.RequestException as e:
-        print(f"  [LOTES-TERCEIROS] falha ao buscar tile {z}/{x}/{y}: {type(e).__name__}: {e}")
+        data = await run_in_threadpool(_lotes_get_tile, cidade, z, x, y)
+    except Exception as e:
+        print(f"  [LOTES-TERCEIROS] falha ao buscar tile {cidade} {z}/{x}/{y}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="Falha ao buscar tile.")
 
-    if r.status_code == 404:
-        # Tile sem dado nessa área — normal, não é erro.
+    if data is None:
+        # Tile sem lote cadastrado nessa área — normal, não é erro (e já
+        # ficou salvo no cache como tombstone, não busca de novo).
         return Response(status_code=204)
 
-    if r.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Tile respondeu HTTP {r.status_code}.")
-
     return Response(
-        content=r.content,
+        content=data,
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=604800"},  # cache 7 dias
+        headers={"Cache-Control": "public, max-age=604800"},  # cache 7 dias no navegador
     )
 
 

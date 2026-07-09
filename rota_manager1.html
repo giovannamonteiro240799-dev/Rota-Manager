@@ -4905,7 +4905,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  <span class="tgl-lbl">MAPA:</span>
  <button class="tgl-btn"             id="tgl-google" onclick="toggleMap('google')">🌐 GOOGLE MAPS</button>
  <button class="tgl-btn active-arcgis" id="tgl-arcgis" onclick="toggleMap('arcgis')">🗺️ LOTES (PMG)</button>
- <button class="tgl-btn"             id="tgl-terceiros" onclick="toggleMap('terceiros')">🏘️ LOTES (APARECIDA/CANEDO)</button>
+ <button class="tgl-btn"             id="tgl-terceiros" onclick="toggleMap('terceiros')">🏘️ LOTES (GOIÂNIA/APARECIDA/CANEDO)</button>
 </div>
 
 <div id="maps-container">
@@ -4922,7 +4922,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
    <div id="arcgis-map"></div>
  </div>
  <div id="map-terceiros-wrap" class="panel-hidden">
-   <div class="map-label" id="lbl-terceiros"><span class="dot"></span> LOTES — APARECIDA DE GOIÂNIA / SENADOR CANEDO</div>
+   <div class="map-label" id="lbl-terceiros"><span class="dot"></span> LOTES — GOIÂNIA / APARECIDA DE GOIÂNIA / SENADOR CANEDO</div>
    <div id="terceiros-map"></div>
  </div>
 </div>
@@ -5351,6 +5351,28 @@ function initTerceirosMap() {
  });
 
  terceirosMap.on('load', () => {
+   // ── Goiânia: mesmo formato de polígono da Aparecida, campos diferentes ──
+   // (mais rápido que a camada antiga PMG/ArcGIS por ser vector tile com
+   // cache permanente no backend, em vez de query ao vivo no ArcGIS deles)
+   terceirosMap.addSource('lotes-goiania', {
+     type: 'vector',
+     tiles: [window.location.origin + '/api/lotes-terceiros/goiania/{z}/{x}/{y}.pbf'],
+     minzoom: 13, maxzoom: 17,
+   });
+   terceirosMap.addLayer({
+     id: 'goiania-fill', type: 'fill', source: 'lotes-goiania', 'source-layer': 'lotes_goiania',
+     paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.12 },
+   });
+   terceirosMap.addLayer({
+     id: 'goiania-linha', type: 'line', source: 'lotes-goiania', 'source-layer': 'lotes_goiania',
+     paint: { 'line-color': '#3b82f6', 'line-width': 1.5 },
+   });
+   terceirosMap.addLayer({
+     id: 'goiania-label', type: 'symbol', source: 'lotes-goiania', 'source-layer': 'lotes_goiania',
+     layout: { 'text-field': ['get', 'LABEL'], 'text-size': 10, 'text-allow-overlap': false },
+     paint: { 'text-color': '#1e40af', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+   });
+
    // ── Aparecida de Goiânia: polígono já vem fechado (fill direto) ──
    terceirosMap.addSource('lotes-aparecida', {
      type: 'vector',
@@ -5400,6 +5422,22 @@ function initTerceirosMap() {
      paint: { 'text-color': '#134e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
    });
 
+   // Clique no polígono de Goiânia mostra popup com quadra/lote
+   terceirosMap.on('click', 'goiania-fill', (e) => {
+     const p = e.features[0].properties;
+     new mapboxgl.Popup()
+       .setLngLat(e.lngLat)
+       .setHTML(
+         '<div class="lote-popup">' +
+         '<b>Quadra/Lote:</b> ' + (p.LABEL || '—') + '<br>' +
+         '<b>Quadra:</b> ' + (p.nm_qdr || '—') + '  <b>Lote:</b> ' + (p.nm_lot || '—') +
+         '</div>'
+       )
+       .addTo(terceirosMap);
+   });
+   terceirosMap.on('mouseenter', 'goiania-fill', () => { terceirosMap.getCanvas().style.cursor = 'pointer'; });
+   terceirosMap.on('mouseleave', 'goiania-fill', () => { terceirosMap.getCanvas().style.cursor = ''; });
+
    // Clique no polígono de Aparecida mostra popup com quadra/lote/rua
    terceirosMap.on('click', 'aparecida-fill', (e) => {
      const p = e.features[0].properties;
@@ -5419,7 +5457,7 @@ function initTerceirosMap() {
    // Clique fora de um lote desenhado também move o pin (igual HERE/Google/PMG)
    terceirosMap.on('click', (e) => {
      if (e.defaultPrevented) return;
-     const feats = terceirosMap.queryRenderedFeatures(e.point, { layers: ['aparecida-fill'] });
+     const feats = terceirosMap.queryRenderedFeatures(e.point, { layers: ['aparecida-fill', 'goiania-fill'] });
      if (feats.length) return;
      moveMap(e.lngLat.lat, e.lngLat.lng, e.lngLat.lat.toFixed(6) + ', ' + e.lngLat.lng.toFixed(6));
    });
