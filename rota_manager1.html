@@ -4823,20 +4823,24 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 .tgl-btn.active-here  { border-color:#f59e0b; color:#f59e0b; background:#1a1200; }
 .tgl-btn.active-google { border-color:#22c55e; color:#22c55e; background:#001a0e; }
 .tgl-btn.active-arcgis { border-color:#a855f7; color:#a855f7; background:#150a1f; }
+.tgl-btn.active-terceiros { border-color:#14b8a6; color:#14b8a6; background:#001615; }
 #maps-container { flex:1; display:flex; min-height:0; }
-#map-here-wrap, #map-google-wrap, #map-arcgis-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+#map-here-wrap, #map-google-wrap, #map-arcgis-wrap, #map-terceiros-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
 #map-google-wrap { border-right:2px solid #1e3a5f; }
 .map-label { height:24px; min-height:24px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:bold; letter-spacing:.07em; background:#0b1120; border-bottom:1px solid #111827; }
 #lbl-here { color:#f59e0b; }
 #lbl-google { color:#22c55e; }
 #lbl-arcgis { color:#a855f7; }
+#lbl-terceiros { color:#14b8a6; }
 .dot { width:7px; height:7px; border-radius:50%; }
 #lbl-here .dot { background:#f59e0b; }
 #lbl-google .dot { background:#22c55e; }
 #lbl-arcgis .dot { background:#a855f7; }
+#lbl-terceiros .dot { background:#14b8a6; }
 #map-here { flex:1; min-height:0; }
 #google-map { flex:1; min-height:0; width:100%; }
 #arcgis-map { flex:1; min-height:0; width:100%; }
+#terceiros-map { flex:1; min-height:0; width:100%; }
 .panel-hidden { display:none !important; }
 /* HERE Maps continua "vivo" (necessário para a busca/geocoding funcionar),
    mas escondido visualmente — display:none quebra a renderização do HERE JS,
@@ -4864,7 +4868,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  /* Mapas empilhados (em vez de lado a lado, ilegíveis no celular) */
  #maps-container { flex-direction: column; }
  #map-google-wrap { border-right: none; border-bottom: 2px solid #1e3a5f; }
- #map-google-wrap, #map-arcgis-wrap { flex: 1 1 50%; min-height: 0; }
+ #map-google-wrap, #map-arcgis-wrap, #map-terceiros-wrap { flex: 1 1 50%; min-height: 0; }
 }
 </style>
 </head>
@@ -4901,6 +4905,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  <span class="tgl-lbl">MAPA:</span>
  <button class="tgl-btn"             id="tgl-google" onclick="toggleMap('google')">🌐 GOOGLE MAPS</button>
  <button class="tgl-btn active-arcgis" id="tgl-arcgis" onclick="toggleMap('arcgis')">🗺️ LOTES (PMG)</button>
+ <button class="tgl-btn"             id="tgl-terceiros" onclick="toggleMap('terceiros')">🏘️ LOTES (APARECIDA/CANEDO)</button>
 </div>
 
 <div id="maps-container">
@@ -4915,6 +4920,10 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  <div id="map-arcgis-wrap">
    <div class="map-label" id="lbl-arcgis"><span class="dot"></span> LOTES — PORTAL MAPA GOIÂNIA</div>
    <div id="arcgis-map"></div>
+ </div>
+ <div id="map-terceiros-wrap" class="panel-hidden">
+   <div class="map-label" id="lbl-terceiros"><span class="dot"></span> LOTES — APARECIDA DE GOIÂNIA / SENADOR CANEDO</div>
+   <div id="terceiros-map"></div>
  </div>
 </div>
 
@@ -4998,6 +5007,7 @@ hereMap.addEventListener('dragend', e => {
    updateDisplay(pos.lat, pos.lng);
    updateGoogle(pos.lat, pos.lng);
    updateArcgis(pos.lat, pos.lng);
+   updateTerceiros(pos.lat, pos.lng);
  }
 });
 hereMap.addEventListener('tap', e => {
@@ -5006,6 +5016,7 @@ hereMap.addEventListener('tap', e => {
  updateDisplay(pos.lat, pos.lng);
  updateGoogle(pos.lat, pos.lng);
  updateArcgis(pos.lat, pos.lng);
+ updateTerceiros(pos.lat, pos.lng);
 });
 
 // ── Google Maps iframe ────────────────────────────────────────────────
@@ -5074,6 +5085,7 @@ function sincronizarParaHere(lat, lng) {
  hereMap.setZoom(19);
  updateDisplay(lat, lng);
  updateArcgis(lat, lng);
+ updateTerceiros(lat, lng);
  // Mostra badge Google capturado
  const el = document.getElementById('google-status');
  document.getElementById('gc-val').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
@@ -5304,6 +5316,123 @@ function updateArcgis(lat, lng) {
  if (arcgisMarker) arcgisMarker.setLngLat([lng, lat]);
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  MAPA 4 — LOTES (Aparecida de Goiânia / Senador Canedo) via Mapbox GL JS
+//  Consome os vector tiles (.pbf) de quadra/lote do Route Planner, através
+//  do proxy do nosso próprio backend (/api/lotes-terceiros/...), que
+//  esconde o token e evita problema de CORS no navegador.
+// ════════════════════════════════════════════════════════════════════════
+
+let terceirosMap = null;
+let _terceirosInicializado = false;
+let terceirosMarker = null;
+
+function initTerceirosMap() {
+ if (_terceirosInicializado) return;
+ _terceirosInicializado = true;
+
+ mapboxgl.accessToken = MAPBOX_TOKEN;
+ terceirosMap = new mapboxgl.Map({
+   container: 'terceiros-map',
+   style: 'mapbox://styles/mapbox/light-v11',
+   center: [currentLng, currentLat],
+   zoom: 17,
+ });
+
+ terceirosMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+ terceirosMarker = new mapboxgl.Marker({ color: '#3b82f6', draggable: true })
+   .setLngLat([currentLng, currentLat])
+   .addTo(terceirosMap);
+
+ terceirosMarker.on('dragend', () => {
+   const pos = terceirosMarker.getLngLat();
+   moveMap(pos.lat, pos.lng, pos.lat.toFixed(6) + ', ' + pos.lng.toFixed(6));
+ });
+
+ terceirosMap.on('load', () => {
+   // ── Aparecida de Goiânia: polígono já vem fechado (fill direto) ──
+   terceirosMap.addSource('lotes-aparecida', {
+     type: 'vector',
+     tiles: [window.location.origin + '/api/lotes-terceiros/aparecida/{z}/{x}/{y}.pbf'],
+     minzoom: 13, maxzoom: 17,
+   });
+   terceirosMap.addLayer({
+     id: 'aparecida-fill', type: 'fill', source: 'lotes-aparecida', 'source-layer': 'lotes_aparecida',
+     paint: { 'fill-color': '#14b8a6', 'fill-opacity': 0.12 },
+   });
+   terceirosMap.addLayer({
+     id: 'aparecida-linha', type: 'line', source: 'lotes-aparecida', 'source-layer': 'lotes_aparecida',
+     paint: { 'line-color': '#14b8a6', 'line-width': 1.5 },
+   });
+   terceirosMap.addLayer({
+     id: 'aparecida-label', type: 'symbol', source: 'lotes-aparecida', 'source-layer': 'lotes_aparecida',
+     layout: { 'text-field': ['get', 'sup'], 'text-size': 10, 'text-allow-overlap': false },
+     paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+   });
+
+   // ── Senador Canedo: vem como linhas de contorno + textos separados ──
+   terceirosMap.addSource('lotes-canedo', {
+     type: 'vector',
+     tiles: [window.location.origin + '/api/lotes-terceiros/canedo/{z}/{x}/{y}.pbf'],
+     minzoom: 13, maxzoom: 17,
+   });
+   terceirosMap.addLayer({
+     id: 'canedo-quadra-linha', type: 'line', source: 'lotes-canedo', 'source-layer': 'CanedoLinhas2geojson',
+     filter: ['==', ['get', 'Layer'], 'QUADRA'],
+     paint: { 'line-color': '#0f766e', 'line-width': 2.5 },
+   });
+   terceirosMap.addLayer({
+     id: 'canedo-lote-linha', type: 'line', source: 'lotes-canedo', 'source-layer': 'CanedoLinhas2geojson',
+     filter: ['==', ['get', 'Layer'], 'LOTE'],
+     paint: { 'line-color': '#14b8a6', 'line-width': 1.2 },
+   });
+   terceirosMap.addLayer({
+     id: 'canedo-label-lote', type: 'symbol', source: 'lotes-canedo', 'source-layer': 'CanedoTextos2geojson',
+     filter: ['==', ['get', 'Layer'], 'NUMLOTE'],
+     layout: { 'text-field': ['get', 'Text'], 'text-size': 10, 'text-allow-overlap': false },
+     paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+   });
+   terceirosMap.addLayer({
+     id: 'canedo-label-quadra', type: 'symbol', source: 'lotes-canedo', 'source-layer': 'CanedoTextos2geojson',
+     filter: ['==', ['get', 'Layer'], 'NUMQD'],
+     layout: { 'text-field': ['concat', 'Q', ['get', 'Text']], 'text-size': 12, 'text-allow-overlap': false },
+     paint: { 'text-color': '#134e4a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+   });
+
+   // Clique no polígono de Aparecida mostra popup com quadra/lote/rua
+   terceirosMap.on('click', 'aparecida-fill', (e) => {
+     const p = e.features[0].properties;
+     new mapboxgl.Popup()
+       .setLngLat(e.lngLat)
+       .setHTML(
+         '<div class="lote-popup">' +
+         '<b>Quadra/Lote:</b> ' + (p.sup || '—') + '<br>' +
+         '<b>Rua:</b> ' + (p.via || '—') +
+         '</div>'
+       )
+       .addTo(terceirosMap);
+   });
+   terceirosMap.on('mouseenter', 'aparecida-fill', () => { terceirosMap.getCanvas().style.cursor = 'pointer'; });
+   terceirosMap.on('mouseleave', 'aparecida-fill', () => { terceirosMap.getCanvas().style.cursor = ''; });
+
+   // Clique fora de um lote desenhado também move o pin (igual HERE/Google/PMG)
+   terceirosMap.on('click', (e) => {
+     if (e.defaultPrevented) return;
+     const feats = terceirosMap.queryRenderedFeatures(e.point, { layers: ['aparecida-fill'] });
+     if (feats.length) return;
+     moveMap(e.lngLat.lat, e.lngLat.lng, e.lngLat.lat.toFixed(6) + ', ' + e.lngLat.lng.toFixed(6));
+   });
+ });
+}
+
+// Move o Mapbox (Aparecida/Canedo) para lat/lng (chamado quando HERE/Google mudam)
+function updateTerceiros(lat, lng) {
+ if (!terceirosMap) return;
+ terceirosMap.flyTo({ center: [lng, lat], zoom: 17 });
+ if (terceirosMarker) terceirosMarker.setLngLat([lng, lat]);
+}
+
 // ── Toggle ────────────────────────────────────────────────────────────
 // O HERE não tem mais painel visual (mapa removido a pedido do usuário),
 // mas o objeto hereMap/marker continua ativo em segundo plano (escondido
@@ -5313,16 +5442,23 @@ function toggleMap(which) {
  _activeMap = which;
  const gw = document.getElementById('map-google-wrap');
  const aw = document.getElementById('map-arcgis-wrap');
+ const tw = document.getElementById('map-terceiros-wrap');
  document.getElementById('tgl-google').className = which === 'google' ? 'tgl-btn active-google' : 'tgl-btn';
  document.getElementById('tgl-arcgis').className = which === 'arcgis' ? 'tgl-btn active-arcgis' : 'tgl-btn';
+ document.getElementById('tgl-terceiros').className = which === 'terceiros' ? 'tgl-btn active-terceiros' : 'tgl-btn';
  gw.classList.add('panel-hidden');
  aw.classList.add('panel-hidden');
+ tw.classList.add('panel-hidden');
  if (which === 'google') {
    gw.classList.remove('panel-hidden');
  } else if (which === 'arcgis') {
    aw.classList.remove('panel-hidden');
    initArcgisMap();   // só carrega o Mapbox/lotes na primeira vez que a aba é aberta
    setTimeout(() => { if (arcgisMap) arcgisMap.resize(); }, 50);
+ } else if (which === 'terceiros') {
+   tw.classList.remove('panel-hidden');
+   initTerceirosMap();   // só carrega o Mapbox/lotes na primeira vez que a aba é aberta
+   setTimeout(() => { if (terceirosMap) terceirosMap.resize(); }, 50);
  }
  atualizarBarraBusca();
 }
@@ -5362,6 +5498,7 @@ function moveMap(lat, lng, title) {
  updateDisplay(lat, lng);
  updateGoogle(lat, lng);
  updateArcgis(lat, lng);
+ updateTerceiros(lat, lng);
  searchInput.value = title;
  hideSugg();
  document.getElementById('status-bar').textContent = '📍 ' + title;
