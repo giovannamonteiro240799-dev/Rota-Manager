@@ -2547,7 +2547,42 @@ display: flex; align-items: center;
 .profile-trigger[aria-expanded="true"] .profile-chevron { transform: rotate(180deg); }
 
 /* dropdown */
-.profile-dropdown { display: none !important; }
+.profile-quick-menu {
+  position: fixed;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.5);
+  padding: 6px;
+  z-index: 950;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity .15s, transform .15s, visibility .15s;
+}
+.profile-quick-menu.open { opacity: 1; visibility: visible; transform: translateY(0); }
+.pqm-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s;
+}
+.pqm-item:hover { background: var(--surface2); }
+.pqm-icon { font-size: 15px; width: 18px; text-align: center; }
+.perfil-view { display: none; }
+.perfil-view.active { display: block; }
 
 /* ── Modal de Perfil (fullscreen) ── */
 .profile-modal-overlay {
@@ -3082,7 +3117,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     </button>
   </nav>
   <div class="sidebar-footer">
-    <button class="sidebar-user" id="sidebar-user-btn" onclick="toggleProfileDropdown()">
+    <button class="sidebar-user" id="sidebar-user-btn" onclick="toggleProfileDropdown(event, this)">
       <div class="sidebar-user-avatar" id="sidebar-avatar">?</div>
       <div class="sidebar-user-info">
         <div class="sidebar-user-name" id="sidebar-username">—</div>
@@ -3542,7 +3577,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     <span class="label" id="theme-toggle-header-label">Claro</span>
   </button>
 <div class="header-user" id="header-user" style="display:none">
-  <button class="profile-trigger" id="profile-trigger" onclick="toggleProfileDropdown()" aria-expanded="false" aria-label="Menu do usuário">
+  <button class="profile-trigger" id="profile-trigger" onclick="toggleProfileDropdown(event, this)" aria-expanded="false" aria-label="Menu do usuário">
     <div class="profile-avatar" id="profile-avatar">?</div>
     <div class="profile-chevron">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3550,14 +3585,23 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       </svg>
     </div>
   </button>
-  <div class="profile-dropdown" id="profile-dropdown"></div>
+  <div class="profile-quick-menu" id="profile-quick-menu">
+    <button class="pqm-item" onclick="abrirPerfil()">
+      <span class="pqm-icon">👤</span>
+      <span>Perfil</span>
+    </button>
+    <button class="pqm-item" onclick="abrirPersonagem()">
+      <span class="pqm-icon">🎮</span>
+      <span>Personagem</span>
+    </button>
+  </div>
 </div>
 
 <!-- Modal de Perfil -->
 <div class="profile-modal-overlay" id="profile-modal-overlay" onclick="fecharProfileModal(event)">
   <div class="profile-modal" role="dialog" aria-modal="true">
     <div class="profile-modal-topbar">
-      <span class="profile-modal-title">Meu Perfil</span>
+      <span class="profile-modal-title" id="profile-modal-title-text">Meu Perfil</span>
       <button class="profile-modal-close" onclick="fecharProfileDropdown()" aria-label="Fechar">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/>
@@ -3568,9 +3612,11 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <div class="profile-dd-avatar" id="profile-dd-avatar">?</div>
       <div>
         <div class="profile-dd-name" id="profile-dd-name">—</div>
-        <div class="profile-modal-sub">Conta RotaManager</div>
+        <div class="profile-modal-sub" id="profile-modal-sub-text">Conta RotaManager</div>
       </div>
     </div>
+
+    <div id="perfil-view-personagem" class="perfil-view">
     <div class="gami-panel">
       <div class="gami-row">
         <div class="gami-avatar-wrap">
@@ -3596,6 +3642,9 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <div class="gami-section-title">Itens conquistados</div>
       <div class="gami-icon-row" id="gami-item-row"></div>
     </div>
+    </div>
+
+    <div id="perfil-view-conta" class="perfil-view">
     <div class="profile-dd-fields">
       <div class="profile-field">
         <label>Usuário</label>
@@ -3620,6 +3669,8 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
       <button class="btn-profile-save" id="btn-profile-save" onclick="salvarPerfil()">💾 Salvar alterações</button>
       <button class="btn-logout" onclick="fazerLogout()">Sair da conta</button>
     </div>
+    </div>
+
   </div>
 </div>
 </header>
@@ -7478,19 +7529,56 @@ document.getElementById('profile-tel-msg').textContent = '';
 }
 function telPerfilKeydown(e) { if (e.key === 'Enter') salvarPerfil(); }
 
-// ── Profile dropdown ───────────────────────────────────────────────────
-function toggleProfileDropdown() {
-  const overlay = document.getElementById('profile-modal-overlay');
-  const isOpen = overlay.classList.contains('open');
-  if (isOpen) { fecharProfileDropdown(); }
-  else {
-    overlay.classList.add('open');
-    document.getElementById('profile-trigger').setAttribute('aria-expanded', 'true');
-    document.getElementById('profile-tel-msg').textContent = '';
-    document.getElementById('profile-email-msg').textContent = '';
-    carregarPerfilUsuario(); // recarrega dados frescos toda vez que abre
-  }
+// ── Menu suspenso do avatar (Perfil / Personagem) ──────────────────────
+function toggleProfileDropdown(e, triggerEl) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('profile-quick-menu');
+  const isOpen = menu.classList.contains('open');
+  if (isOpen) { fecharQuickMenu(); return; }
+
+  const el = triggerEl || document.getElementById('profile-trigger');
+  const rect = el.getBoundingClientRect();
+  // por padrão, abre logo abaixo do botão; se não couber (ex: botão no
+  // rodapé da sidebar), abre acima dele
+  const abrirParaCima = rect.bottom + 100 > window.innerHeight;
+  menu.style.left = Math.max(8, rect.left) + 'px';
+  menu.style.top  = abrirParaCima ? '' : (rect.bottom + 6) + 'px';
+  menu.style.bottom = abrirParaCima ? (window.innerHeight - rect.top + 6) + 'px' : '';
+  menu.classList.add('open');
+  document.getElementById('profile-trigger').setAttribute('aria-expanded', 'true');
 }
+function fecharQuickMenu() {
+  document.getElementById('profile-quick-menu').classList.remove('open');
+  document.getElementById('profile-trigger').setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', function (e) {
+  const menu = document.getElementById('profile-quick-menu');
+  if (menu && menu.classList.contains('open') && !menu.contains(e.target)
+      && !e.target.closest('#profile-trigger') && !e.target.closest('#sidebar-user-btn')) {
+    fecharQuickMenu();
+  }
+});
+
+// ── Modal de Perfil (2 views: conta e personagem) ──────────────────────
+function _abrirProfileModal(view) {
+  fecharQuickMenu();
+  document.querySelectorAll('.perfil-view').forEach(v => v.classList.remove('active'));
+  document.getElementById('perfil-view-' + view).classList.add('active');
+  document.getElementById('profile-modal-title-text').textContent =
+    view === 'personagem' ? 'Meu Personagem' : 'Meu Perfil';
+  document.getElementById('profile-modal-sub-text').textContent =
+    view === 'personagem' ? 'Progresso e conquistas' : 'Conta RotaManager';
+
+  const overlay = document.getElementById('profile-modal-overlay');
+  overlay.classList.add('open');
+  document.getElementById('profile-trigger').setAttribute('aria-expanded', 'true');
+  document.getElementById('profile-tel-msg').textContent = '';
+  document.getElementById('profile-email-msg').textContent = '';
+  carregarPerfilUsuario(); // recarrega dados frescos (conta + personagem) toda vez que abre
+}
+function abrirPerfil()      { _abrirProfileModal('conta'); }
+function abrirPersonagem()  { _abrirProfileModal('personagem'); }
+
 function fecharProfileDropdown() {
   document.getElementById('profile-modal-overlay').classList.remove('open');
   document.getElementById('profile-trigger').setAttribute('aria-expanded', 'false');
@@ -7499,7 +7587,7 @@ function fecharProfileModal(e) {
   if (e.target === document.getElementById('profile-modal-overlay')) fecharProfileDropdown();
 }
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') fecharProfileDropdown();
+  if (e.key === 'Escape') { fecharProfileDropdown(); fecharQuickMenu(); }
 });
 
 async function carregarPerfilUsuario() {
