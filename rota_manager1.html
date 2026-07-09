@@ -4822,24 +4822,20 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 .tgl-btn { padding:5px 16px; border:2px solid transparent; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; transition:.15s; background:#0b1120; color:#64748b; }
 .tgl-btn.active-here  { border-color:#f59e0b; color:#f59e0b; background:#1a1200; }
 .tgl-btn.active-google { border-color:#22c55e; color:#22c55e; background:#001a0e; }
-.tgl-btn.active-arcgis { border-color:#a855f7; color:#a855f7; background:#150a1f; }
 .tgl-btn.active-terceiros { border-color:#14b8a6; color:#14b8a6; background:#001615; }
 #maps-container { flex:1; display:flex; min-height:0; }
-#map-here-wrap, #map-google-wrap, #map-arcgis-wrap, #map-terceiros-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+#map-here-wrap, #map-google-wrap, #map-terceiros-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
 #map-google-wrap { border-right:2px solid #1e3a5f; }
 .map-label { height:24px; min-height:24px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:bold; letter-spacing:.07em; background:#0b1120; border-bottom:1px solid #111827; }
 #lbl-here { color:#f59e0b; }
 #lbl-google { color:#22c55e; }
-#lbl-arcgis { color:#a855f7; }
 #lbl-terceiros { color:#14b8a6; }
 .dot { width:7px; height:7px; border-radius:50%; }
 #lbl-here .dot { background:#f59e0b; }
 #lbl-google .dot { background:#22c55e; }
-#lbl-arcgis .dot { background:#a855f7; }
 #lbl-terceiros .dot { background:#14b8a6; }
 #map-here { flex:1; min-height:0; }
 #google-map { flex:1; min-height:0; width:100%; }
-#arcgis-map { flex:1; min-height:0; width:100%; }
 #terceiros-map { flex:1; min-height:0; width:100%; }
 .panel-hidden { display:none !important; }
 /* HERE Maps continua "vivo" (necessário para a busca/geocoding funcionar),
@@ -4868,7 +4864,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  /* Mapas empilhados (em vez de lado a lado, ilegíveis no celular) */
  #maps-container { flex-direction: column; }
  #map-google-wrap { border-right: none; border-bottom: 2px solid #1e3a5f; }
- #map-google-wrap, #map-arcgis-wrap, #map-terceiros-wrap { flex: 1 1 50%; min-height: 0; }
+ #map-google-wrap, #map-terceiros-wrap { flex: 1 1 50%; min-height: 0; }
 }
 </style>
 </head>
@@ -4904,8 +4900,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 <div id="map-toggle-bar">
  <span class="tgl-lbl">MAPA:</span>
  <button class="tgl-btn"             id="tgl-google" onclick="toggleMap('google')">🌐 GOOGLE MAPS</button>
- <button class="tgl-btn active-arcgis" id="tgl-arcgis" onclick="toggleMap('arcgis')">🗺️ LOTES (PMG)</button>
- <button class="tgl-btn"             id="tgl-terceiros" onclick="toggleMap('terceiros')">🏘️ LOTES (GOIÂNIA/APARECIDA/CANEDO)</button>
+ <button class="tgl-btn active-terceiros" id="tgl-terceiros" onclick="toggleMap('terceiros')">🏘️ MAPA QD/LT</button>
 </div>
 
 <div id="maps-container">
@@ -4917,11 +4912,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
    <div class="map-label" id="lbl-google"><span class="dot"></span> GOOGLE MAPS</div>
    <div id="google-map"></div>
  </div>
- <div id="map-arcgis-wrap">
-   <div class="map-label" id="lbl-arcgis"><span class="dot"></span> LOTES — PORTAL MAPA GOIÂNIA</div>
-   <div id="arcgis-map"></div>
- </div>
- <div id="map-terceiros-wrap" class="panel-hidden">
+ <div id="map-terceiros-wrap">
    <div class="map-label" id="lbl-terceiros"><span class="dot"></span> LOTES — GOIÂNIA / APARECIDA DE GOIÂNIA / SENADOR CANEDO</div>
    <div id="terceiros-map"></div>
  </div>
@@ -5006,7 +4997,6 @@ hereMap.addEventListener('dragend', e => {
    const pos = marker.getGeometry();
    updateDisplay(pos.lat, pos.lng);
    updateGoogle(pos.lat, pos.lng);
-   updateArcgis(pos.lat, pos.lng);
    updateTerceiros(pos.lat, pos.lng);
  }
 });
@@ -5015,7 +5005,6 @@ hereMap.addEventListener('tap', e => {
  marker.setGeometry(pos);
  updateDisplay(pos.lat, pos.lng);
  updateGoogle(pos.lat, pos.lng);
- updateArcgis(pos.lat, pos.lng);
  updateTerceiros(pos.lat, pos.lng);
 });
 
@@ -5084,7 +5073,6 @@ function sincronizarParaHere(lat, lng) {
  hereMap.setCenter({ lat, lng });
  hereMap.setZoom(19);
  updateDisplay(lat, lng);
- updateArcgis(lat, lng);
  updateTerceiros(lat, lng);
  // Mostra badge Google capturado
  const el = document.getElementById('google-status');
@@ -5105,216 +5093,11 @@ function updateGoogle(lat, lng) {
 loadGoogleMapsAPI();
 
 // ════════════════════════════════════════════════════════════════════════
-//  MAPA 3 — LOTES (Portal Mapa de Goiânia) renderizado via Mapbox GL JS
-//  Consome a camada "Divisas de Lote" do ArcGIS REST público da prefeitura,
-//  já pedindo a geometria convertida para WGS84 (outSR=4326) para plotar
-//  direto no Mapbox, sem precisar converter UTM manualmente.
+// ════════════════════════════════════════════════════════════════════════
+//  MAPA 3 — LOTES (Goiânia / Aparecida de Goiânia / Senador Canedo)
 // ════════════════════════════════════════════════════════════════════════
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibW9pc2Vzc2VuanVpem8iLCJhIjoiY21xOHRzOXZyMDFidTJyb2x0Zml5a2FxNyJ9.EHf8W94vDiim9_EDVGlP1g';
-const PMG_LOTE_URL  = 'https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/0/query';
-const PMG_QUADRA_URL = 'https://portalmapa.goiania.go.gov.br/servicogyn/rest/services/MapaServer/Feature_Base/FeatureServer/1/query';
-
-let arcgisMap = null;
-let _arcgisInicializado = false;
-let _arcgisFetchTimer = null;
-let arcgisMarker = null;
-
-// Buffer de pré-carregamento: guarda o envelope já carregado (em graus WGS84).
-// Só dispara novo fetch quando o mapa sair dessa área — arrastos pequenos são instantâneos.
-let _envelopeCarregado = null;   // { xmin, ymin, xmax, ymax }
-
-// Fator de expansão: busca uma área FATOR vezes maior que a tela visível em cada direção.
-// Com zoom 18 a tela tem ~0.004° de lado → margem de ~0.005° extra em cada lado ≈ 500m.
-const _BUFFER_FATOR = 2.5;
-
-/** Retorna true se o mapa saiu da área já carregada (precisa de novo fetch). */
-function _precisaRecarregarLotes() {
-  if (!_envelopeCarregado) return true;
-  const b = arcgisMap.getBounds();
-  return (
-    b.getWest()  < _envelopeCarregado.xmin ||
-    b.getSouth() < _envelopeCarregado.ymin ||
-    b.getEast()  > _envelopeCarregado.xmax ||
-    b.getNorth() > _envelopeCarregado.ymax
-  );
-}
-
-/** Calcula o envelope expandido (área a buscar) com base nos bounds visíveis atuais. */
-function _envelopeExpandido() {
-  const b = arcgisMap.getBounds();
-  const dLng = (b.getEast()  - b.getWest())  * _BUFFER_FATOR;
-  const dLat = (b.getNorth() - b.getSouth()) * _BUFFER_FATOR;
-  const cLng = (b.getEast()  + b.getWest())  / 2;
-  const cLat = (b.getNorth() + b.getSouth()) / 2;
-  return { xmin: cLng - dLng/2, ymin: cLat - dLat/2, xmax: cLng + dLng/2, ymax: cLat + dLat/2 };
-}
-
-function initArcgisMap() {
- if (_arcgisInicializado) return;
- _arcgisInicializado = true;
-
- mapboxgl.accessToken = MAPBOX_TOKEN;
- arcgisMap = new mapboxgl.Map({
-   container: 'arcgis-map',
-   style: 'mapbox://styles/mapbox/light-v11',
-   center: [currentLng, currentLat],
-   zoom: 18,
- });
-
- arcgisMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
- arcgisMarker = new mapboxgl.Marker({ color: '#3b82f6', draggable: true })
-   .setLngLat([currentLng, currentLat])
-   .addTo(arcgisMap);
-
- arcgisMarker.on('dragend', () => {
-   const pos = arcgisMarker.getLngLat();
-   moveMap(pos.lat, pos.lng, pos.lat.toFixed(6) + ', ' + pos.lng.toFixed(6));
- });
-
- arcgisMap.on('load', () => {
-   arcgisMap.addSource('pmg-lotes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-   arcgisMap.addSource('pmg-quadras', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-
-   arcgisMap.addLayer({
-     id: 'pmg-lotes-fill',
-     type: 'fill',
-     source: 'pmg-lotes',
-     paint: { 'fill-color': '#a855f7', 'fill-opacity': 0.12 },
-   });
-   arcgisMap.addLayer({
-     id: 'pmg-lotes-linha',
-     type: 'line',
-     source: 'pmg-lotes',
-     paint: { 'line-color': '#a855f7', 'line-width': 1.5 },
-   });
-   // Contorno mais grosso para a QUADRA inteira (visualmente separa um quarteirão do outro)
-   arcgisMap.addLayer({
-     id: 'pmg-quadras-linha',
-     type: 'line',
-     source: 'pmg-quadras',
-     paint: { 'line-color': '#6b21a8', 'line-width': 2.5 },
-   });
-   // Rótulo "quadra-lote" (ex: 343-22) no centro de cada lote
-   arcgisMap.addLayer({
-     id: 'pmg-lotes-label',
-     type: 'symbol',
-     source: 'pmg-lotes',
-     layout: {
-       'text-field': ['concat', ['get', '_qdr_lote'], '-', ['get', 'nm_lot']],
-       'text-size': 11,
-       'text-allow-overlap': false,
-     },
-     paint: { 'text-color': '#581c87', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
-   });
-
-   carregarLotesVisiveis();
-   arcgisMap.on('moveend', () => {
-     if (!_precisaRecarregarLotes()) return;   // ainda dentro do buffer → sem fetch
-     clearTimeout(_arcgisFetchTimer);
-     _arcgisFetchTimer = setTimeout(carregarLotesVisiveis, 150);  // debounce reduzido
-   });
-
-   // Clique num lote mostra popup com quadra/lote/IPTU
-   arcgisMap.on('click', 'pmg-lotes-fill', (e) => {
-     const p = e.features[0].properties;
-     new mapboxgl.Popup()
-       .setLngLat(e.lngLat)
-       .setHTML(
-         '<div class="lote-popup">' +
-         '<b>Quadra:</b> ' + (p._qdr_lote || '—') + '<br>' +
-         '<b>Lote:</b> ' + (p.nm_lot || '—') + '<br>' +
-         '<b>Bairro:</b> ' + (p.nm_bai || '—') + '<br>' +
-         '<b>IPTU:</b> ' + (p.nr_iptu || '—') +
-         '</div>'
-       )
-       .addTo(arcgisMap);
-   });
-   arcgisMap.on('mouseenter', 'pmg-lotes-fill', () => { arcgisMap.getCanvas().style.cursor = 'pointer'; });
-   arcgisMap.on('mouseleave', 'pmg-lotes-fill', () => { arcgisMap.getCanvas().style.cursor = ''; });
-
-   // Clique fora de um lote já desenhado também move o pin (igual HERE/Google)
-   arcgisMap.on('click', (e) => {
-     if (e.defaultPrevented) return;
-     const feats = arcgisMap.queryRenderedFeatures(e.point, { layers: ['pmg-lotes-fill'] });
-     if (feats.length) return;   // já tratado pelo listener da camada acima
-     moveMap(e.lngLat.lat, e.lngLat.lng, e.lngLat.lat.toFixed(6) + ', ' + e.lngLat.lng.toFixed(6));
-   });
- });
-}
-
-// Busca os lotes E as quadras dentro da área visível do mapa (carregamento automático ao navegar).
-// A camada de lote, sozinha, não traz o número da quadra preenchido (nm_qdr vem vazio nela);
-// por isso buscamos também a camada "Divisas de Quadra" e juntamos os dois pelo id_qdr,
-// reconstruindo o rótulo completo "quadra-lote" (ex: 343-22), igual aparece no site da prefeitura.
-async function carregarLotesVisiveis() {
- if (!arcgisMap) return;
- // Busca uma área expandida ao redor da posição atual (buffer de pré-carregamento).
- // Assim, arrastos pequenos não precisam de novo fetch — os lotes já estão carregados.
- const exp = _envelopeExpandido();
- const envelope = { ...exp, spatialReference: { wkid: 4326 } };
- const envelopeStr = JSON.stringify(envelope);
-
- const paramsLote = new URLSearchParams({
-   f: 'geojson', where: '1=1',
-   outFields: 'nm_qdr,nm_lot,nm_bai,nr_iptu,id_qdr',
-   geometry: envelopeStr, geometryType: 'esriGeometryEnvelope',
-   spatialRel: 'esriSpatialRelIntersects', inSR: '4326', outSR: '4326',
- });
- const paramsQuadra = new URLSearchParams({
-   f: 'geojson', where: '1=1',
-   outFields: 'nm_qdr,id',
-   geometry: envelopeStr, geometryType: 'esriGeometryEnvelope',
-   spatialRel: 'esriSpatialRelIntersects', inSR: '4326', outSR: '4326',
- });
-
- try {
-   const [rLote, rQuadra] = await Promise.all([
-     fetch(PMG_LOTE_URL + '?' + paramsLote.toString()),
-     fetch(PMG_QUADRA_URL + '?' + paramsQuadra.toString()),
-   ]);
-   const geoLote   = await rLote.json();
-   const geoQuadra = await rQuadra.json();
-
-   if (geoQuadra && geoQuadra.type === 'FeatureCollection' && arcgisMap.getSource('pmg-quadras')) {
-     arcgisMap.getSource('pmg-quadras').setData(geoQuadra);
-   }
-
-   // Mapa id da quadra → número da quadra, para anexar a cada lote
-   const numeroPorIdQuadra = {};
-   if (geoQuadra && geoQuadra.features) {
-     geoQuadra.features.forEach(f => {
-       if (f.properties && f.properties.id) numeroPorIdQuadra[f.properties.id] = f.properties.nm_qdr;
-     });
-   }
-
-   if (geoLote && geoLote.type === 'FeatureCollection' && arcgisMap.getSource('pmg-lotes')) {
-     let semQuadra = 0;
-     geoLote.features.forEach(f => {
-       const p = f.properties || {};
-       // Usa nm_qdr se já vier preenchido na própria feature de lote; senão busca pela quadra relacionada
-       p._qdr_lote = p.nm_qdr || numeroPorIdQuadra[p.id_qdr] || '';
-       if (!p._qdr_lote) semQuadra++;
-     });
-     if (semQuadra > 0) {
-       console.warn('[PMG] ' + semQuadra + ' de ' + geoLote.features.length + ' lote(s) sem número de quadra resolvido — verifique os nomes dos campos de junção (id_qdr / id).');
-     }
-     arcgisMap.getSource('pmg-lotes').setData(geoLote);
-     // Registra a área efetivamente carregada para evitar fetches redundantes
-     _envelopeCarregado = exp;
-   }
- } catch (e) {
-   console.warn('Falha ao carregar lotes/quadras do Portal Mapa de Goiânia:', e);
- }
-}
-
-// Move o Mapbox/ArcGIS para lat/lng (chamado quando HERE/Google mudam)
-function updateArcgis(lat, lng) {
- if (!arcgisMap) return;
- arcgisMap.flyTo({ center: [lng, lat], zoom: 18 });
- if (arcgisMarker) arcgisMarker.setLngLat([lng, lat]);
-}
 
 // ════════════════════════════════════════════════════════════════════════
 //  MAPA 4 — LOTES (Aparecida de Goiânia / Senador Canedo) via Mapbox GL JS
@@ -5322,6 +5105,7 @@ function updateArcgis(lat, lng) {
 //  do proxy do nosso próprio backend (/api/lotes-terceiros/...), que
 //  esconde o token e evita problema de CORS no navegador.
 // ════════════════════════════════════════════════════════════════════════
+
 
 let terceirosMap = null;
 let _terceirosInicializado = false;
@@ -5352,8 +5136,7 @@ function initTerceirosMap() {
 
  terceirosMap.on('load', () => {
    // ── Goiânia: mesmo formato de polígono da Aparecida, campos diferentes ──
-   // (mais rápido que a camada antiga PMG/ArcGIS por ser vector tile com
-   // cache permanente no backend, em vez de query ao vivo no ArcGIS deles)
+   // (mais rápido que query ao vivo em serviço de mapa público, por ser vector tile com
    terceirosMap.addSource('lotes-goiania', {
      type: 'vector',
      tiles: [window.location.origin + '/api/lotes-terceiros/goiania/{z}/{x}/{y}.pbf'],
@@ -5454,7 +5237,7 @@ function initTerceirosMap() {
    terceirosMap.on('mouseenter', 'aparecida-fill', () => { terceirosMap.getCanvas().style.cursor = 'pointer'; });
    terceirosMap.on('mouseleave', 'aparecida-fill', () => { terceirosMap.getCanvas().style.cursor = ''; });
 
-   // Clique fora de um lote desenhado também move o pin (igual HERE/Google/PMG)
+   // Clique fora de um lote desenhado também move o pin (igual HERE/Google)
    terceirosMap.on('click', (e) => {
      if (e.defaultPrevented) return;
      const feats = terceirosMap.queryRenderedFeatures(e.point, { layers: ['aparecida-fill', 'goiania-fill'] });
@@ -5475,24 +5258,17 @@ function updateTerceiros(lat, lng) {
 // O HERE não tem mais painel visual (mapa removido a pedido do usuário),
 // mas o objeto hereMap/marker continua ativo em segundo plano (escondido
 // via .here-hidden) porque a busca/geocoding por HERE ainda depende dele.
-let _activeMap = 'arcgis';
+let _activeMap = 'terceiros';
 function toggleMap(which) {
  _activeMap = which;
  const gw = document.getElementById('map-google-wrap');
- const aw = document.getElementById('map-arcgis-wrap');
  const tw = document.getElementById('map-terceiros-wrap');
  document.getElementById('tgl-google').className = which === 'google' ? 'tgl-btn active-google' : 'tgl-btn';
- document.getElementById('tgl-arcgis').className = which === 'arcgis' ? 'tgl-btn active-arcgis' : 'tgl-btn';
  document.getElementById('tgl-terceiros').className = which === 'terceiros' ? 'tgl-btn active-terceiros' : 'tgl-btn';
  gw.classList.add('panel-hidden');
- aw.classList.add('panel-hidden');
  tw.classList.add('panel-hidden');
  if (which === 'google') {
    gw.classList.remove('panel-hidden');
- } else if (which === 'arcgis') {
-   aw.classList.remove('panel-hidden');
-   initArcgisMap();   // só carrega o Mapbox/lotes na primeira vez que a aba é aberta
-   setTimeout(() => { if (arcgisMap) arcgisMap.resize(); }, 50);
  } else if (which === 'terceiros') {
    tw.classList.remove('panel-hidden');
    initTerceirosMap();   // só carrega o Mapbox/lotes na primeira vez que a aba é aberta
@@ -5518,7 +5294,7 @@ const suggestionsEl = document.getElementById('suggestions');
 let suggestTimer = null;
 const hideSugg = () => { suggestionsEl.style.display = 'none'; suggestionsEl.innerHTML = ''; };
 
-toggleMap('arcgis');   // chamado aqui, depois que hideSugg/atualizarBarraBusca já existem
+toggleMap('terceiros');   // chamado aqui, depois que hideSugg/atualizarBarraBusca já existem
 
 
 const parseCoords = (text) => {
@@ -5535,7 +5311,6 @@ function moveMap(lat, lng, title) {
  hereMap.setZoom(19);
  updateDisplay(lat, lng);
  updateGoogle(lat, lng);
- updateArcgis(lat, lng);
  updateTerceiros(lat, lng);
  searchInput.value = title;
  hideSugg();
