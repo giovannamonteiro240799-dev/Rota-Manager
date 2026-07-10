@@ -4811,8 +4811,13 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 .sugg-item { padding:9px 14px; cursor:pointer; border-bottom:1px solid #1e3a5f; color:#e2e8f0; font-size:12px; }
 .sugg-item:last-child { border-bottom:none; }
 .sugg-item:hover { background:#1e3a5f; }
+.sugg-title-row { display:flex; align-items:center; gap:6px; }
 .sugg-title { font-weight:bold; }
 .sugg-addr { color:#64748b; font-size:11px; }
+.sugg-src { font-size:9px; font-weight:bold; letter-spacing:.04em; padding:1px 6px; border-radius:4px; text-transform:uppercase; flex-shrink:0; }
+.sugg-src-here   { background:#3b1a00; color:#f59e0b; }
+.sugg-src-mapbox { background:#001615; color:#14b8a6; }
+.sugg-src-google { background:#0a2a12; color:#22c55e; }
 #map-toggle-bar {
  display:flex; align-items:center; gap:6px;
  padding:0 18px; height:36px; min-height:36px;
@@ -5326,7 +5331,7 @@ const parseCoords = (text) => {
  return { lat, lng };
 };
 
-function moveMap(lat, lng, title) {
+function moveMap(lat, lng, title, source) {
  marker.setGeometry({ lat, lng });
  hereMap.setCenter({ lat, lng });
  hereMap.setZoom(19);
@@ -5335,7 +5340,8 @@ function moveMap(lat, lng, title) {
  updateTerceiros(lat, lng);
  searchInput.value = title;
  hideSugg();
- document.getElementById('status-bar').textContent = '📍 ' + title;
+ const tag = source ? '[' + source + '] ' : '';
+ document.getElementById('status-bar').textContent = '📍 ' + tag + title;
 }
 
 async function geocode(query) {
@@ -5349,7 +5355,7 @@ async function geocodeHere(query) {
  try {
    const r = await fetch('https://geocode.search.hereapi.com/v1/geocode?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil') + '&apiKey=' + HERE_KEY + '&limit=1&lang=pt-BR');
    const d = await r.json();
-   if (d.items?.length) { moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title); return; }
+   if (d.items?.length) { moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title, 'HERE'); return; }
  } catch(e) { /* HERE falhou — cai pro fallback abaixo mesmo assim */ }
  // HERE não achou nada (ou deu erro) — tenta o Mapbox antes de desistir
  await geocodeMapbox(query);
@@ -5366,8 +5372,7 @@ async function geocodeMapbox(query) {
    const feat = d.features?.[0];
    if (feat) {
      const [lng, lat] = feat.geometry.coordinates;
-     moveMap(lat, lng, feat.properties?.full_address || feat.properties?.name || query);
-     document.getElementById('status-bar').textContent = '🗺️ Encontrado via Mapbox (HERE não achou este endereço).';
+     moveMap(lat, lng, feat.properties?.full_address || feat.properties?.name || query, 'Mapbox — fallback, HERE não achou');
    } else {
      document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (HERE nem Mapbox).';
    }
@@ -5379,7 +5384,7 @@ function geocodeGoogle(query) {
  googleGeocoder.geocode({ address: query + ', Goiânia, GO, Brasil' }, (results, status) => {
    if (status === 'OK' && results?.length) {
      const loc = results[0].geometry.location;
-     moveMap(loc.lat(), loc.lng(), results[0].formatted_address);
+     moveMap(loc.lat(), loc.lng(), results[0].formatted_address, 'Google');
    } else {
      document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (Google).';
    }
@@ -5404,6 +5409,7 @@ async function autosuggestHere(query) {
        addr:  item.address?.label || '',
        lat:   item.position.lat,
        lng:   item.position.lng,
+       source: 'HERE',
      })));
      return;
    }
@@ -5427,6 +5433,7 @@ async function autosuggestMapbox(query) {
      addr:  f.properties?.place_formatted || f.properties?.full_address || '',
      lat:   f.geometry.coordinates[1],
      lng:   f.geometry.coordinates[0],
+     source: 'Mapbox',
    })));
  } catch(e) { hideSugg(); }
 }
@@ -5452,7 +5459,12 @@ function renderSuggGoogle(predictions) {
    div.className = 'sugg-item';
    const main = p.structured_formatting?.main_text || p.description;
    const sec  = p.structured_formatting?.secondary_text || '';
-   div.innerHTML = '<div class="sugg-title">' + main + '</div><div class="sugg-addr">' + sec + '</div>';
+   div.innerHTML =
+     '<div class="sugg-title-row">' +
+       '<span class="sugg-src sugg-src-google">Google</span>' +
+       '<span class="sugg-title">' + main + '</span>' +
+     '</div>' +
+     '<div class="sugg-addr">' + sec + '</div>';
    div.addEventListener('click', () => selectGooglePlace(p.place_id, p.description));
    suggestionsEl.appendChild(div);
  });
@@ -5470,7 +5482,7 @@ function selectGooglePlace(placeId, title) {
    sessionToken: _placesSessionToken,
  }, (place, status) => {
    if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry?.location) {
-     moveMap(place.geometry.location.lat(), place.geometry.location.lng(), title);
+     moveMap(place.geometry.location.lat(), place.geometry.location.lng(), title, 'Google');
    } else {
      document.getElementById('status-bar').textContent = 'Erro na busca (Google).';
    }
@@ -5483,8 +5495,14 @@ function renderSugg(items) {
  items.forEach(item => {
    const div = document.createElement('div');
    div.className = 'sugg-item';
-   div.innerHTML = '<div class="sugg-title">' + item.title + '</div><div class="sugg-addr">' + (item.addr||'') + '</div>';
-   div.addEventListener('click', () => moveMap(item.lat, item.lng, item.title));
+   const srcClass = item.source === 'Mapbox' ? 'sugg-src-mapbox' : 'sugg-src-here';
+   div.innerHTML =
+     '<div class="sugg-title-row">' +
+       '<span class="sugg-src ' + srcClass + '">' + (item.source || '') + '</span>' +
+       '<span class="sugg-title">' + item.title + '</span>' +
+     '</div>' +
+     '<div class="sugg-addr">' + (item.addr||'') + '</div>';
+   div.addEventListener('click', () => moveMap(item.lat, item.lng, item.title, item.source));
    suggestionsEl.appendChild(div);
  });
  suggestionsEl.style.display = 'block';
