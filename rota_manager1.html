@@ -5018,8 +5018,11 @@ hereMap.addEventListener('tap', e => {
 const GKEY = 'AIzaSyAaESp78MrYmySlHiupJKjjgCi0-1dfWnE';
 let googleMap = null;
 let googleMarker = null;
-let _googleReady = false;
+let _googleReady = false;        // true assim que Geocoder/Autocomplete (grátis) estão prontos
 let _pendingGoto = null;
+let _pendingMapCreate = false;   // true se o usuário pediu o painel visual antes do script terminar de carregar
+let _googleScriptRequested = false;
+let _googleServicesResolvers = [];
 let placesAutocompleteService = null;
 let placesService = null;
 let googleGeocoder = null;
@@ -5034,16 +5037,57 @@ function _newPlacesSession() {
  }
 }
 
-// Carrega a Google Maps JS API dinamicamente
+// Carrega a Google Maps JS API dinamicamente — só insere o <script> uma vez.
+// Isso NÃO cria o mapa visual (Dynamic Maps, que é pago); só deixa o
+// namespace "google.maps" disponível pra Geocoder/Autocomplete (grátis).
 function loadGoogleMapsAPI() {
+ if (_googleScriptRequested) return;
+ _googleScriptRequested = true;
  const s = document.createElement('script');
- s.src = 'https://maps.googleapis.com/maps/api/js?key=' + GKEY + '&libraries=places&callback=initGoogleMap&language=pt-BR';
+ s.src = 'https://maps.googleapis.com/maps/api/js?key=' + GKEY + '&libraries=places&callback=initGoogleServices&language=pt-BR';
  s.async = true; s.defer = true;
  document.head.appendChild(s);
 }
 
-// Callback chamado pela API quando pronta
-window.initGoogleMap = function() {
+// Devolve uma Promise que resolve quando Geocoder/Autocomplete estiverem
+// prontos — carregando o script se ainda não tiver sido pedido. Usado pelo
+// fallback de busca (HERE não achou → tenta Google) mesmo com o painel
+// visual do Google fechado, sem nunca criar o Dynamic Map por causa disso.
+function ensureGoogleServicesReady() {
+ if (_googleReady) return Promise.resolve();
+ return new Promise(resolve => {
+   _googleServicesResolvers.push(resolve);
+   loadGoogleMapsAPI();
+ });
+}
+
+// Callback chamado pela API quando o script termina de carregar.
+// Só inicializa os serviços de busca (grátis) — o mapa visual só é criado
+// em createGoogleMap(), sob demanda.
+window.initGoogleServices = function() {
+ placesAutocompleteService = new google.maps.places.AutocompleteService();
+ googleGeocoder = new google.maps.Geocoder();
+ // PlacesService exige um container de atribuição, mas aceita uma div
+ // qualquer (não precisa ser o mapa) — assim conseguimos Place Details
+ // sem nunca criar o Dynamic Map por causa disso.
+ placesService = new google.maps.places.PlacesService(document.createElement('div'));
+ _newPlacesSession();
+ _googleReady = true;
+
+ _googleServicesResolvers.forEach(resolve => resolve());
+ _googleServicesResolvers = [];
+
+ if (_pendingMapCreate) {
+   _pendingMapCreate = false;
+   createGoogleMap();
+ }
+};
+
+// Cria o mapa visual do Google (Dynamic Maps — evento pago) — só é chamada
+// a partir do toggleMap('google'), na 1ª vez que o usuário abre o painel.
+function createGoogleMap() {
+ if (googleMap) return;
+
  googleMap = new google.maps.Map(document.getElementById('google-map'), {
    center: { lat: currentLat, lng: currentLng },
    zoom: 19,
@@ -5074,21 +5118,14 @@ window.initGoogleMap = function() {
    sincronizarParaHere(pos.lat(), pos.lng());
  });
 
- _googleReady = true;
  if (_pendingGoto) {
    updateGoogle(_pendingGoto[0], _pendingGoto[1]);
    _pendingGoto = null;
  }
 
- // ── Places: usado pela barra de busca quando o mapa ativo é o Google ──
- placesAutocompleteService = new google.maps.places.AutocompleteService();
- placesService = new google.maps.places.PlacesService(googleMap);
- googleGeocoder = new google.maps.Geocoder();
- _newPlacesSession();
-
  document.getElementById('status-bar').textContent =
    '📌 Clique em qualquer mapa para mover o pin. Ambos ficam sincronizados.';
-};
+}
 
 // ── Sincroniza clique/drag do Google → HERE ──────────────────────────
 function sincronizarParaHere(lat, lng) {
@@ -5108,13 +5145,17 @@ function sincronizarParaHere(lat, lng) {
 
 // ── Move o Google Maps para lat/lng (chamado quando HERE muda) ────────
 function updateGoogle(lat, lng) {
- if (!_googleReady) { _pendingGoto = [lat, lng]; return; }
+ if (!googleMap) { _pendingGoto = [lat, lng]; return; }
  googleMap.setCenter({ lat, lng });
  googleMap.setZoom(19);
  googleMarker.setPosition({ lat, lng });
 }
 
-loadGoogleMapsAPI();
+// loadGoogleMapsAPI() não roda mais direto aqui — só é chamado sob demanda:
+// (1) quando o usuário abre o painel Google pela 1ª vez, ou
+// (2) quando a busca no HERE falha e precisa do fallback pro Google.
+// Em nenhum dos dois casos isso cria o Dynamic Map sozinho — o mapa visual
+// só nasce em createGoogleMap(), chamada de dentro do toggleMap('google').
 
 // ════════════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════════
@@ -5293,6 +5334,14 @@ function toggleMap(which) {
  tw.classList.add('panel-hidden');
  if (which === 'google') {
    gw.classList.remove('panel-hidden');
+   if (!googleMap) {
+     if (_googleReady) {
+       createGoogleMap();   // script já carregado (ex: por causa de um fallback de busca) — só falta o mapa visual
+     } else {
+       _pendingMapCreate = true;
+       loadGoogleMapsAPI();   // 1ª vez que alguém pede o painel Google nesta sessão
+     }
+   }
  } else if (which === 'terceiros') {
    tw.classList.remove('panel-hidden');
    initTerceirosMap();   // só carrega o Mapbox/lotes na primeira vez que a aba é aberta
@@ -5357,8 +5406,25 @@ async function geocodeHere(query) {
    const d = await r.json();
    if (d.items?.length) { moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title, 'HERE'); return; }
  } catch(e) { /* HERE falhou — cai pro fallback abaixo mesmo assim */ }
- // HERE não achou nada (ou deu erro) — tenta o Mapbox antes de desistir
- await geocodeMapbox(query);
+ // HERE não achou nada (ou deu erro) — vai direto pro Google
+ await geocodeGoogleFallback(query);
+}
+
+// Fallback de geocode: usado quando o HERE não encontrou nada, mesmo que o
+// painel visual do Google esteja fechado. Só carrega o script (grátis) e
+// chama o Geocoder — nunca cria o Dynamic Map por causa disso.
+async function geocodeGoogleFallback(query) {
+ await ensureGoogleServicesReady();
+ if (!googleGeocoder) { await geocodeMapbox(query); return; }
+ googleGeocoder.geocode({ address: query + ', Goiânia, GO, Brasil' }, (results, status) => {
+   if (status === 'OK' && results?.length) {
+     const loc = results[0].geometry.location;
+     moveMap(loc.lat(), loc.lng(), results[0].formatted_address, 'Google — fallback, HERE não achou');
+   } else {
+     // Google também não achou — Mapbox como último recurso
+     geocodeMapbox(query);
+   }
+ });
 }
 
 async function geocodeMapbox(query) {
@@ -5374,9 +5440,9 @@ async function geocodeMapbox(query) {
      const [lng, lat] = feat.geometry.coordinates;
      moveMap(lat, lng, feat.properties?.full_address || feat.properties?.name || query, 'Mapbox — fallback, HERE não achou');
    } else {
-     document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (HERE nem Mapbox).';
+     document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (HERE, Google e Mapbox).';
    }
- } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca (HERE e Mapbox falharam).'; }
+ } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca (HERE, Google e Mapbox falharam).'; }
 }
 
 function geocodeGoogle(query) {
@@ -5414,8 +5480,29 @@ async function autosuggestHere(query) {
      return;
    }
  } catch(e) { /* HERE falhou — cai pro fallback abaixo mesmo assim */ }
- // HERE não sugeriu nada (ou deu erro) — tenta o Mapbox antes de desistir
- await autosuggestMapbox(query);
+ // HERE não sugeriu nada (ou deu erro) — vai direto pro Google
+ await autosuggestGoogleFallback(query);
+}
+
+// Fallback de sugestões: mesma ideia do geocodeGoogleFallback — carrega só
+// os serviços de busca do Google (grátis) e usa o Autocomplete, sem precisar
+// que o painel visual do Google esteja aberto.
+async function autosuggestGoogleFallback(query) {
+ await ensureGoogleServicesReady();
+ if (!placesAutocompleteService) { await autosuggestMapbox(query); return; }
+ placesAutocompleteService.getPlacePredictions({
+   input: query,
+   sessionToken: _placesSessionToken,
+   componentRestrictions: { country: 'br' },
+   location: new google.maps.LatLng(-16.7159, -49.2925),
+   radius: 30000,
+ }, (predictions, status) => {
+   if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions?.length) {
+     autosuggestMapbox(query);   // Google também não sugeriu nada — Mapbox como último recurso
+     return;
+   }
+   renderSuggGoogle(predictions);
+ });
 }
 
 async function autosuggestMapbox(query) {
