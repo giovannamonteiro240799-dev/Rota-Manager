@@ -5093,7 +5093,7 @@ function createGoogleMap() {
    zoom: 19,
    mapTypeId: 'roadmap',
    disableDefaultUI: false,
-   clickableIcons: false,
+   clickableIcons: true,
  });
 
  // Pin vermelho no Google Maps
@@ -5105,9 +5105,41 @@ function createGoogleMap() {
  });
 
  // ── CLIQUE no mapa → move pin Google + atualiza HERE ────────────────
+ // Se o clique for em cima de um estabelecimento/prédio (ícone do Google),
+ // o evento vem com e.placeId — buscamos os detalhes (nome + número) e
+ // levamos o pin pro ponto exato do local, em vez do ponto onde o dedo tocou.
  googleMap.addListener('click', (e) => {
    const lat = e.latLng.lat();
    const lng = e.latLng.lng();
+
+   if (e.placeId) {
+     e.stop();   // evita abrir o card padrão do Google por cima do mapa
+     if (!placesService) { googleMarker.setPosition({ lat, lng }); sincronizarParaHere(lat, lng); return; }
+
+     placesService.getDetails({
+       placeId: e.placeId,
+       fields: ['geometry', 'name', 'formatted_address', 'address_components'],
+     }, (place, status) => {
+       if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry?.location) {
+         const plat = place.geometry.location.lat();
+         const plng = place.geometry.location.lng();
+         googleMarker.setPosition({ lat: plat, lng: plng });
+         sincronizarParaHere(plat, plng);
+
+         const numComp = place.address_components?.find(c => c.types.includes('street_number'));
+         const nome = place.name || '';
+         document.getElementById('status-bar').textContent = numComp
+           ? '🏢 ' + nome + ' — nº ' + numComp.long_name
+           : '🏢 ' + nome + ' (sem número cadastrado no Google)';
+       } else {
+         googleMarker.setPosition({ lat, lng });
+         sincronizarParaHere(lat, lng);
+       }
+     });
+     return;
+   }
+
+   // Clique comum (rua, terreno vazio) — sem placeId
    googleMarker.setPosition({ lat, lng });
    sincronizarParaHere(lat, lng);
  });
