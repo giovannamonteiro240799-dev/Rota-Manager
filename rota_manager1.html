@@ -5018,6 +5018,7 @@ hereMap.addEventListener('tap', e => {
 const GKEY = 'AIzaSyAaESp78MrYmySlHiupJKjjgCi0-1dfWnE';
 let googleMap = null;
 let googleMarker = null;
+let googlePlaceInfoWindow = null;   // balão com nome/endereço do local clicado
 let _googleReady = false;        // true assim que Geocoder/Autocomplete (grátis) estão prontos
 let _pendingGoto = null;
 let _pendingMapCreate = false;   // true se o usuário pediu o painel visual antes do script terminar de carregar
@@ -5106,8 +5107,10 @@ function createGoogleMap() {
 
  // ── CLIQUE no mapa → move pin Google + atualiza HERE ────────────────
  // Se o clique for em cima de um estabelecimento/prédio (ícone do Google),
- // o evento vem com e.placeId — buscamos os detalhes (nome + número) e
- // levamos o pin pro ponto exato do local, em vez do ponto onde o dedo tocou.
+ // o evento vem com e.placeId — buscamos os detalhes (nome + endereço) e
+ // levamos o pin pro ponto exato do local, mostrando o endereço num balão.
+ googlePlaceInfoWindow = new google.maps.InfoWindow();
+
  googleMap.addListener('click', (e) => {
    const lat = e.latLng.lat();
    const lng = e.latLng.lng();
@@ -5118,7 +5121,7 @@ function createGoogleMap() {
 
      placesService.getDetails({
        placeId: e.placeId,
-       fields: ['geometry', 'name', 'formatted_address', 'address_components'],
+       fields: ['geometry', 'name', 'formatted_address'],
      }, (place, status) => {
        if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry?.location) {
          const plat = place.geometry.location.lat();
@@ -5126,20 +5129,26 @@ function createGoogleMap() {
          googleMarker.setPosition({ lat: plat, lng: plng });
          sincronizarParaHere(plat, plng);
 
-         const numComp = place.address_components?.find(c => c.types.includes('street_number'));
-         const nome = place.name || '';
-         document.getElementById('status-bar').textContent = numComp
-           ? '🏢 ' + nome + ' — nº ' + numComp.long_name
-           : '🏢 ' + nome + ' (sem número cadastrado no Google)';
+         const endereco = place.formatted_address || 'Endereço não encontrado.';
+         googlePlaceInfoWindow.setContent(
+           '<div style="font:13px/1.4 system-ui,-apple-system,sans-serif;color:#1a1a1a;max-width:220px;">' +
+             (place.name ? '<strong>' + place.name + '</strong><br>' : '') +
+             endereco +
+           '</div>'
+         );
+         googlePlaceInfoWindow.open({ map: googleMap, anchor: googleMarker });
+         document.getElementById('status-bar').textContent = '🏢 ' + (place.name ? place.name + ' — ' : '') + endereco;
        } else {
          googleMarker.setPosition({ lat, lng });
          sincronizarParaHere(lat, lng);
+         document.getElementById('status-bar').textContent = 'Não consegui obter o endereço deste local (Google).';
        }
      });
      return;
    }
 
    // Clique comum (rua, terreno vazio) — sem placeId
+   googlePlaceInfoWindow.close();
    googleMarker.setPosition({ lat, lng });
    sincronizarParaHere(lat, lng);
  });
