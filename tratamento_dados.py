@@ -66,9 +66,6 @@ def norm_street_code(code: str) -> str:
     return code
 
 
-_STREET_STOP_RE = re.compile(r'\b(QD\.?|QUADRA|LT\.?|LOTE|SETOR)\b')
-
-
 def extract_street_key(addr: str) -> str:
     if not isinstance(addr, str):
         return ''
@@ -81,13 +78,7 @@ def extract_street_key(addr: str) -> str:
     )
 
     if not m:
-        base = u.split(',')[0].strip()
-        # Corta lixo de quadra/lote/setor grudado no nome da rua sem vírgula
-        # (ex: "RUA TUXAUA QD 51 LOTE 01/03 SETOR PQ AMAZONIA" -> "RUA TUXAUA")
-        stop = _STREET_STOP_RE.search(base)
-        if stop:
-            base = base[:stop.start()].strip()
-        return base
+        return u.split(',')[0].strip()
 
     raw = m.group(1).rstrip('.')
     code = norm_street_code(m.group(2).strip())
@@ -156,7 +147,7 @@ def _extract_street_number(addr: str):
     if re.match(r'^S/?N$', token):
         return None
     m = re.match(r'^(\d+)$', token)
-    if m and m.group(1) != '0':
+    if m and len(m.group(1)) >= 2:
         return m.group(1)
     return None
 
@@ -199,21 +190,18 @@ def standardize(addr: str) -> str:
         return ''
 
     sk = extract_street_key(addr)
-    num = _extract_street_number(addr)
-    bld_name = _extract_bld_name(addr) if bool(BLDG_RE.search(addr)) else None
-
-    # Número real da rua tem prioridade sobre QD/LT (que é um sistema de
-    # endereçamento auxiliar, não o "número" convencional do imóvel).
-    if num and bld_name:
-        return f"{sk}, {num}, {_bld_prefix(addr)} {bld_name}"
-    if num:
-        return f"{sk}, {num}"
-
     qd, lt = _parse_qd_lt(addr)
     if qd is not None and lt is not None:
         return f"{sk}, {qd}-{lt}"
-    if bld_name:
-        return f"{sk}, {_bld_prefix(addr)} {bld_name}"
+
+    num = _extract_street_number(addr)
+    if num:
+        return f"{sk}, {num}"
+
+    if bool(BLDG_RE.search(addr)):
+        name = _extract_bld_name(addr)
+        if name:
+            return f"{sk}, {_bld_prefix(addr)} {name}"
 
     return sk
 
@@ -231,9 +219,6 @@ def fuzzy_key(addr: str) -> str:
     t = norm_street_code(t)
     t = BLDG_RE.sub('', t)
     t = re.sub(r'\b(APT|APTO|AP|APARTAMENTO|CASA|CS)\s*\d+\b', '', t)
-    # Remove número de apto grudado sem espaço no fim de uma palavra
-    # (ex: "VIVAZ1005A" -> "VIVAZ", "APTO1201C" -> "APTO" que cai no NOISE)
-    t = re.sub(r'(?<=[A-Z])\d+[A-Z]?\b', '', t)
     t = re.sub(r'\b\d+\b', '', t)
     t = re.sub(r'[,\.\-/\\|]', ' ', t)
     tokens = [tk for tk in t.split() if tk and tk not in NOISE and len(tk) > 1]
@@ -261,43 +246,46 @@ def group_rows_p1(rows, threshold=0.72):
         if rx != ry:
             parent[rx] = ry
 
+    def get_num(k):
+        m = re.search(r',\s*(\d+)', k)
+        return m.group(1) if m else None
+
     streets = [extract_street_key(r['address']) for r in rows]
+    std_keys = [_standardized_key(r['address']) for r in rows]
     fkeys = [fuzzy_key(r['address']) for r in rows]
     bldnames = [strip_accents(_extract_bld_name(r['address']) or '') for r in rows]
-    raw_nums = [_extract_street_number(r['address']) for r in rows]
-    qdlts = [_parse_qd_lt(r['address']) for r in rows]
 
     for i, j in combinations(range(n), 2):
         if streets[i] != streets[j]:
             continue
 
-        num_i, num_j = raw_nums[i], raw_nums[j]
+        ki, kj = std_keys[i], std_keys[j]
+        ki_has_detail = ',' in ki
+        kj_has_detail = ',' in kj
 
-        # Sinal mais forte: número real da rua (não confundir com QD/LT,
-        # que é um sistema de endereçamento à parte). Se os dois têm
-        # número e ele é igual -> mesmo prédio, une direto.
-        if num_i is not None and num_j is not None:
-            if num_i == num_j:
+        if ki_has_detail and kj_has_detail:
+            if ki == kj:
                 union(i, j)
             continue
 
-        # Se apenas um dos dois tem número de rua, o número não decide
-        # sozinho (o outro pode estar descrito só por QD/LT ou pelo nome
-        # do prédio) -> cai para os sinais de QD/LT / prédio / fuzzy abaixo.
+        num_i = get_num(ki)
+        num_j = get_num(kj)
 
-        qd_i, lt_i = qdlts[i]
-        qd_j, lt_j = qdlts[j]
-        if qd_i is not None and qd_j is not None:
-            if (qd_i, lt_i) == (qd_j, lt_j):
-                union(i, j)
-                continue
-            elif num_i is None and num_j is None:
-                # QD/LT presentes nos dois e diferentes, sem número de rua
-                # para desempatar -> sinal forte de endereços distintos.
-                continue
+        if num_i is not None and num_j is not None and num_i != num_j:
+            continue
+
+        if (num_i is not None and not kj_has_detail) or (num_j is not None and not ki_has_detail):
+            continue
+
+        # Guarda extra: compara número direto do endereço bruto,
+        # evita agrupar "Rua X, 290" com "Rua X, 546" quando std_key falhou em extrair o número
+        raw_num_i = _extract_street_number(rows[i]['address'])
+        raw_num_j = _extract_street_number(rows[j]['address'])
+        if raw_num_i is not None and raw_num_j is not None and raw_num_i != raw_num_j:
+            continue
 
         same_bld = bldnames[i] and bldnames[j] and bldnames[i] == bldnames[j]
-        if same_bld or similarity(fkeys[i], fkeys[j]) >= threshold:
+        if similarity(fkeys[i], fkeys[j]) >= threshold or same_bld:
             union(i, j)
 
     groups = defaultdict(list)
