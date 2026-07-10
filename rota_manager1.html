@@ -5015,6 +5015,19 @@ let googleMap = null;
 let googleMarker = null;
 let _googleReady = false;
 let _pendingGoto = null;
+let placesAutocompleteService = null;
+let placesService = null;
+let googleGeocoder = null;
+let _placesSessionToken = null;
+
+// Cria (ou renova) o "session token" do Places — agrupa as chamadas de
+// Autocomplete + Place Details de uma mesma busca sob a mesma sessão,
+// que é a forma mais barata de cobrança do Google pra isso.
+function _newPlacesSession() {
+ if (window.google?.maps?.places?.AutocompleteSessionToken) {
+   _placesSessionToken = new google.maps.places.AutocompleteSessionToken();
+ }
+}
 
 // Carrega a Google Maps JS API dinamicamente
 function loadGoogleMapsAPI() {
@@ -5061,6 +5074,12 @@ window.initGoogleMap = function() {
    updateGoogle(_pendingGoto[0], _pendingGoto[1]);
    _pendingGoto = null;
  }
+
+ // ── Places: usado pela barra de busca quando o mapa ativo é o Google ──
+ placesAutocompleteService = new google.maps.places.AutocompleteService();
+ placesService = new google.maps.places.PlacesService(googleMap);
+ googleGeocoder = new google.maps.Geocoder();
+ _newPlacesSession();
 
  document.getElementById('status-bar').textContent =
    '📌 Clique em qualquer mapa para mover o pin. Ambos ficam sincronizados.';
@@ -5279,13 +5298,15 @@ function toggleMap(which) {
 
 // ── Barra de busca reage ao mapa ativo (HERE ou Google) ────────────────
 function atualizarBarraBusca() {
- // Busca sempre via HERE — Google Places/Geocoding exige billing ativado no projeto,
- // que ainda não está habilitado. O mapa visual do Google continua funcionando normalmente.
  const input = document.getElementById('search-input');
  const icon  = document.getElementById('search-icon');
  hideSugg();
- input.placeholder = 'Buscar endereço ou lat,lng...';
- icon.textContent   = '🔍';
+ if (_activeMap === 'google') {
+   input.placeholder = 'Buscar endereço (Google) ou lat,lng...';
+ } else {
+   input.placeholder = 'Buscar endereço ou lat,lng...';
+ }
+ icon.textContent = '🔍';
 }
 
 // ── Busca ─────────────────────────────────────────────────────────────
@@ -5320,6 +5341,7 @@ function moveMap(lat, lng, title) {
 async function geocode(query) {
  const c = parseCoords(query);
  if (c) { moveMap(c.lat, c.lng, c.lat.toFixed(6) + ', ' + c.lng.toFixed(6)); return; }
+ if (_activeMap === 'google') { geocodeGoogle(query); return; }
  await geocodeHere(query);
 }
 
@@ -5327,14 +5349,47 @@ async function geocodeHere(query) {
  try {
    const r = await fetch('https://geocode.search.hereapi.com/v1/geocode?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil') + '&apiKey=' + HERE_KEY + '&limit=1&lang=pt-BR');
    const d = await r.json();
-   if (d.items?.length) moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title);
-   else document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado.';
- } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca (HERE).'; }
+   if (d.items?.length) { moveMap(d.items[0].position.lat, d.items[0].position.lng, d.items[0].title); return; }
+ } catch(e) { /* HERE falhou — cai pro fallback abaixo mesmo assim */ }
+ // HERE não achou nada (ou deu erro) — tenta o Mapbox antes de desistir
+ await geocodeMapbox(query);
+}
+
+async function geocodeMapbox(query) {
+ try {
+   const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+     + '?q=' + encodeURIComponent(query + ', Goiânia, GO, Brasil')
+     + '&access_token=' + MAPBOX_TOKEN
+     + '&country=br&language=pt&proximity=-49.2925,-16.7159&limit=1';
+   const r = await fetch(url);
+   const d = await r.json();
+   const feat = d.features?.[0];
+   if (feat) {
+     const [lng, lat] = feat.geometry.coordinates;
+     moveMap(lat, lng, feat.properties?.full_address || feat.properties?.name || query);
+     document.getElementById('status-bar').textContent = '🗺️ Encontrado via Mapbox (HERE não achou este endereço).';
+   } else {
+     document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (HERE nem Mapbox).';
+   }
+ } catch(e) { document.getElementById('status-bar').textContent = 'Erro na busca (HERE e Mapbox falharam).'; }
+}
+
+function geocodeGoogle(query) {
+ if (!_googleReady || !googleGeocoder) { document.getElementById('status-bar').textContent = 'Google Maps ainda carregando...'; return; }
+ googleGeocoder.geocode({ address: query + ', Goiânia, GO, Brasil' }, (results, status) => {
+   if (status === 'OK' && results?.length) {
+     const loc = results[0].geometry.location;
+     moveMap(loc.lat(), loc.lng(), results[0].formatted_address);
+   } else {
+     document.getElementById('status-bar').textContent = 'Nenhum resultado encontrado (Google).';
+   }
+ });
 }
 
 async function autosuggest(query) {
  if (parseCoords(query)) { hideSugg(); return; }
  if (query.length < 3) { hideSugg(); return; }
+ if (_activeMap === 'google') { autosuggestGoogle(query); return; }
  await autosuggestHere(query);
 }
 
@@ -5343,14 +5398,84 @@ async function autosuggestHere(query) {
    const r = await fetch('https://autosuggest.search.hereapi.com/v1/autosuggest?q=' + encodeURIComponent(query + ', Goiânia') + '&at=-16.7159,-49.2925&apiKey=' + HERE_KEY + '&limit=6&lang=pt-BR&in=countryCode:BRA');
    const d = await r.json();
    const items = (d.items || []).filter(i => i.position);
-   if (!items.length) { hideSugg(); return; }
-   renderSugg(items.map(item => ({
-     title: item.title,
-     addr:  item.address?.label || '',
-     lat:   item.position.lat,
-     lng:   item.position.lng,
+   if (items.length) {
+     renderSugg(items.map(item => ({
+       title: item.title,
+       addr:  item.address?.label || '',
+       lat:   item.position.lat,
+       lng:   item.position.lng,
+     })));
+     return;
+   }
+ } catch(e) { /* HERE falhou — cai pro fallback abaixo mesmo assim */ }
+ // HERE não sugeriu nada (ou deu erro) — tenta o Mapbox antes de desistir
+ await autosuggestMapbox(query);
+}
+
+async function autosuggestMapbox(query) {
+ try {
+   const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+     + '?q=' + encodeURIComponent(query + ', Goiânia')
+     + '&access_token=' + MAPBOX_TOKEN
+     + '&country=br&language=pt&proximity=-49.2925,-16.7159&limit=6';
+   const r = await fetch(url);
+   const d = await r.json();
+   const feats = d.features || [];
+   if (!feats.length) { hideSugg(); return; }
+   renderSugg(feats.map(f => ({
+     title: f.properties?.name_preferred || f.properties?.name || query,
+     addr:  f.properties?.place_formatted || f.properties?.full_address || '',
+     lat:   f.geometry.coordinates[1],
+     lng:   f.geometry.coordinates[0],
    })));
  } catch(e) { hideSugg(); }
+}
+
+function autosuggestGoogle(query) {
+ if (!_googleReady || !placesAutocompleteService) { hideSugg(); return; }
+ placesAutocompleteService.getPlacePredictions({
+   input: query,
+   sessionToken: _placesSessionToken,
+   componentRestrictions: { country: 'br' },
+   location: new google.maps.LatLng(-16.7159, -49.2925),
+   radius: 30000,
+ }, (predictions, status) => {
+   if (status !== google.maps.places.PlacesServiceStatus.OK || !predictions?.length) { hideSugg(); return; }
+   renderSuggGoogle(predictions);
+ });
+}
+
+function renderSuggGoogle(predictions) {
+ suggestionsEl.innerHTML = '';
+ predictions.forEach(p => {
+   const div = document.createElement('div');
+   div.className = 'sugg-item';
+   const main = p.structured_formatting?.main_text || p.description;
+   const sec  = p.structured_formatting?.secondary_text || '';
+   div.innerHTML = '<div class="sugg-title">' + main + '</div><div class="sugg-addr">' + sec + '</div>';
+   div.addEventListener('click', () => selectGooglePlace(p.place_id, p.description));
+   suggestionsEl.appendChild(div);
+ });
+ suggestionsEl.style.display = 'block';
+}
+
+// Busca a geometria (lat/lng) de um place_id escolhido no autosuggest do
+// Google — é a chamada "Place Details" que fecha a sessão de billing
+// aberta pelo Autocomplete (mais barato que chamadas avulsas).
+function selectGooglePlace(placeId, title) {
+ if (!placesService) return;
+ placesService.getDetails({
+   placeId,
+   fields: ['geometry', 'name'],
+   sessionToken: _placesSessionToken,
+ }, (place, status) => {
+   if (status === google.maps.places.PlacesServiceStatus.OK && place.geometry?.location) {
+     moveMap(place.geometry.location.lat(), place.geometry.location.lng(), title);
+   } else {
+     document.getElementById('status-bar').textContent = 'Erro na busca (Google).';
+   }
+   _newPlacesSession();   // fecha essa sessão, abre uma nova pra próxima busca
+ });
 }
 
 function renderSugg(items) {
