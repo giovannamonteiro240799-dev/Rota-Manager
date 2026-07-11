@@ -1083,8 +1083,26 @@ header .badge b { color: var(--accent2); }
   }
   .mapa-marker.sem-coord { background: #6b7280; color: #fff; }
   .mapa-marker.ativo { background: #ef4444; z-index: 10; transform: scale(1.15); }
+  .mapa-marker.selecionado { box-shadow: 0 0 0 3px var(--accent2, #2563eb), 0 2px 6px rgba(0,0,0,.45); z-index: 5; }
   .mapa-popup { font-family: var(--font); font-size: 12px; max-width: 220px; }
   .mapa-popup b { display: block; margin-bottom: 2px; color: var(--accent2, #2563eb); }
+
+  #mapa-header .agrupar-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 12px; flex-shrink: 0;
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 700;
+    transition: .15s;
+  }
+  #mapa-header .agrupar-btn:not(:disabled):hover { color: var(--text); background: var(--surface2); }
+  #mapa-header .agrupar-btn .badge {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    background: var(--surface2); color: var(--muted);
+    font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+  }
+  #mapa-header .agrupar-btn.active { color: #1a1205; border-color: var(--accent, #f59e0b); background: var(--accent, #f59e0b); }
+  #mapa-header .agrupar-btn.active .badge { background: rgba(0,0,0,.25); color: #1a1205; }
+  #mapa-header .agrupar-btn:disabled { opacity: .5; cursor: default; }
 
   /* ── Bottom sheet de detalhes da parada (estilo Google Maps) ── */
   #parada-sheet {
@@ -1138,6 +1156,12 @@ header .badge b { color: var(--accent2); }
     font-size: 12.5px; color: var(--muted); line-height: 1.5;
   }
   #parada-sheet .sheet-nota b { color: var(--text); }
+  #parada-sheet .sheet-select {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text); font-weight: 600; cursor: pointer;
+    padding: 4px 0;
+  }
+  #parada-sheet .sheet-select input { width: 18px; height: 18px; accent-color: var(--accent2, #2563eb); cursor: pointer; }
 
 
   #admin-body {
@@ -3514,6 +3538,9 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     <div id="mapa-header">
       <span class="title">🗺 Mapa da rota</span>
       <span class="subtitle" id="mapa-subtitle"></span>
+      <button class="agrupar-btn" id="mapa-agrupar-btn" onclick="agruparSelecionados()" disabled title="Marque ao menos 2 paradas para agrupar">
+        🔗 Agrupar <span class="badge" id="mapa-agrupar-badge">0</span>
+      </button>
       <button class="close-btn" onclick="fecharMapaRotas()" aria-label="Fechar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -3534,6 +3561,10 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
           </div>
           <div class="sheet-endereco" id="sheet-endereco"></div>
           <div class="sheet-coords" id="sheet-coords"></div>
+          <label class="sheet-select">
+            <input type="checkbox" id="sheet-select-check" onchange="toggleSelecaoParadaMapa()">
+            Selecionar esta parada para agrupar
+          </label>
           <div class="sheet-nota" id="sheet-nota" style="display:none;"></div>
         </div>
       </div>
@@ -4582,6 +4613,21 @@ bnAgrupar.classList.toggle('active', n >= 2);
 bnAgrupar.title = n < 2
 ? 'Marque ao menos 2 endereços para agrupar'
 : `Agrupar os ${n} endereços selecionados`;
+atualizarBotaoAgruparMapa();
+}
+
+// Mesma seleção (_selecionados) da tabela, refletida no botão do mapa
+function atualizarBotaoAgruparMapa() {
+const btn = document.getElementById('mapa-agrupar-btn');
+if (!btn) return;
+const badge = document.getElementById('mapa-agrupar-badge');
+const n = _selecionados.size;
+badge.textContent = n;
+btn.disabled = n < 2;
+btn.classList.toggle('active', n >= 2);
+btn.title = n < 2
+? 'Marque ao menos 2 paradas para agrupar'
+: `Agrupar as ${n} paradas selecionadas`;
 }
 
 // O botão flutuante aparece sempre que há pelo menos 1 endereço selecionado,
@@ -4657,6 +4703,13 @@ const q = document.getElementById('filter-input').value.trim();
 if (q) filtrarTabela(); else renderTable(_allRows);
 updateStats(_allRows);
 autoSaveDraft();
+
+// Se o mapa estiver aberto, atualiza os marcadores (a seleção já foi
+// limpa acima, então nenhum fica marcado como selecionado à toa)
+if (document.getElementById('mapa-overlay').classList.contains('show')) {
+fecharParadaSheet();
+renderMapaRotas();
+}
 }
 
 function escHtml(s) {
@@ -6000,7 +6053,7 @@ function renderMapaRotas() {
 
   comCoord.forEach(item => {
     const el = document.createElement('div');
-    el.className = 'mapa-marker';
+    el.className = 'mapa-marker' + (_selecionados.has(item.row._cid) ? ' selecionado' : '');
     el.textContent = item.seq;
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -6037,11 +6090,13 @@ function renderMapaRotas() {
 }
 
 let _paradaAtivaEl = null;
+let _paradaAtivaCid = null;
 
 function mostrarParadaSheet(item, el) {
   if (_paradaAtivaEl) _paradaAtivaEl.classList.remove('ativo');
   el.classList.add('ativo');
   _paradaAtivaEl = el;
+  _paradaAtivaCid = item.row._cid;
 
   const endereco = item.row.address || item.row.group_label || item.row.endereco_original || 'Endereço não informado';
   const stopsStr = item.row.group_stops || item.row.stop || '';
@@ -6050,6 +6105,7 @@ function mostrarParadaSheet(item, el) {
   document.getElementById('sheet-eta').textContent = stopsStr ? `Seq. original ${stopsStr}` : `Parada ${item.seq} de ${_mapaRotasMarkers.length}`;
   document.getElementById('sheet-endereco').textContent = endereco;
   document.getElementById('sheet-coords').textContent = `Lat: ${item.lat.toFixed(6)}  ·  Lng: ${item.lon.toFixed(6)}`;
+  document.getElementById('sheet-select-check').checked = _selecionados.has(item.row._cid);
 
   const notaEl = document.getElementById('sheet-nota');
   const membros = Array.isArray(item.row.membros) ? item.row.membros.filter(m => m.original && m.original !== endereco) : [];
@@ -6064,9 +6120,21 @@ function mostrarParadaSheet(item, el) {
   _mapaRotasInstance.flyTo({ center: [item.lon, item.lat], zoom: Math.max(_mapaRotasInstance.getZoom(), 15), duration: 400 });
 }
 
+// Marca/desmarca a parada atualmente aberta no sheet para o agrupamento
+// (mesmo conjunto _selecionados usado pela tabela e pelo botão flutuante)
+function toggleSelecaoParadaMapa() {
+  if (_paradaAtivaCid == null) return;
+  const chk = document.getElementById('sheet-select-check');
+  if (chk.checked) _selecionados.add(_paradaAtivaCid);
+  else _selecionados.delete(_paradaAtivaCid);
+  if (_paradaAtivaEl) _paradaAtivaEl.classList.toggle('selecionado', chk.checked);
+  atualizarFab();
+}
+
 function fecharParadaSheet() {
   document.getElementById('parada-sheet').classList.remove('show');
   if (_paradaAtivaEl) { _paradaAtivaEl.classList.remove('ativo'); _paradaAtivaEl = null; }
+  _paradaAtivaCid = null;
 }
 
 // Mantém função vazia para não quebrar referências antigas
