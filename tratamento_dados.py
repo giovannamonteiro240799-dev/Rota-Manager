@@ -564,11 +564,17 @@ def load_saida_p2(path: str):
 def consolidate_p2(rows):
     groups = OrderedDict()
     for row in rows:
-        key = row['reformado'].strip().upper() if row['reformado'] else '__SEM_ENDERECO__'
-        groups.setdefault(key, []).append(row)
+        base_key = row['reformado'].strip().upper() if row['reformado'] else '__SEM_ENDERECO__'
+        bairro_norm = (row['bairro'] or '').strip().upper()
+        # Endereços com o mesmo texto (rua/número) mas em bairros diferentes
+        # são endereços DIFERENTES — ex.: "RUA C160, 312-18" pode existir em
+        # dois setores distintos da cidade. O bairro entra na chave de
+        # agrupamento pra não misturar esses casos no mesmo grupo.
+        group_key = (base_key, bairro_norm) if base_key != '__SEM_ENDERECO__' else (base_key, '')
+        groups.setdefault(group_key, []).append(row)
 
     result = []
-    for key, members in groups.items():
+    for (base_key, _bairro_norm), members in groups.items():
         stops = sorted(
             [(m['seq'] or m['stop']) for m in members if (m['seq'] or m['stop'])],
             key=lambda s: str(s).lstrip('-').zfill(10)
@@ -595,6 +601,15 @@ def consolidate_p2(rows):
 
         bairro_val = next((m['bairro'] for m in members if m['bairro']), '')
 
+        # Endereço final (o que vira "Destination Address" e é usado pelo
+        # app/geocodificação): acrescenta o bairro no fim, pra desambiguar
+        # números repetidos em setores diferentes.
+        # Ex.: "RUA C160, 312-18" -> "RUA C160, 312-18, JARDIM AMÉRICA"
+        key_display = base_key if base_key != '__SEM_ENDERECO__' else ''
+        bairro_fmt = bairro_val.strip().upper()
+        if key_display and bairro_fmt and bairro_fmt not in key_display:
+            key_display = f"{key_display}, {bairro_fmt}"
+
         # Lista detalhada de cada membro do grupo (seq + endereço original),
         # usada pelo app para permitir desagrupar um item específico.
         # Usa 'seq' (coluna SEQUENCE) pois é o valor único por linha;
@@ -610,7 +625,7 @@ def consolidate_p2(rows):
 
         result.append({
             'seq': seq_val,
-            'key': key if key != '__SEM_ENDERECO__' else '',
+            'key': key_display,
             'original': original_val,
             'bairro': bairro_val,
             'stops': stops,
