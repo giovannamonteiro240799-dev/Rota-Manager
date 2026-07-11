@@ -774,14 +774,22 @@ def _normaliza_num(v: str) -> str:
 
 def _here_resultado_bate(query: str, item: dict) -> bool:
     """
-    Só aceita o resultado do HERE se o número/qd-lt pedido bate com o que
-    o HERE devolveu de fato (address.houseNumber). Sem essa checagem o
-    HERE "acerta" a rua mas erra o lote, e mesmo assim o app marcava como
-    confirmado — por isso só volta True se for igual.
+    Só aceita o resultado do HERE se:
+      1) o resultado for de nível "houseNumber" de verdade (não street/
+         locality/place — isso é o HERE chutando o meio da rua ou o
+         centro do bairro quando não acha o número/lote real); e
+      2) o número/qd-lt pedido bate com o address.houseNumber devolvido.
+    Sem o item 1, o HERE às vezes ecoa de volta um houseNumber parecido
+    com o que foi pedido mesmo interpolando a posição — por isso "bater
+    o número" sozinho não é suficiente, e foi isso que causou vários
+    endereços diferentes caindo no mesmo ponto (chute de área).
     """
     esperado = _numero_esperado(query)
     if esperado is None:
         return True  # nada pra validar (endereço de prédio ou sem número)
+    tipo = item.get("resultType")
+    if tipo not in ("houseNumber", "addressBlock"):
+        return False  # só achou rua/bairro/área — não é o lote certo
     house = ((item.get("address") or {}).get("houseNumber") or "").strip()
     if not house:
         return False
