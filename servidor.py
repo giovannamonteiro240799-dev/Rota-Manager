@@ -13,7 +13,8 @@ Rodando localmente:
 Railway / Render / Fly:
     A plataforma define PORT via variável de ambiente.
     Configure também: HERE_API_KEY, BREVO_API_KEY, BREVO_SENDER_EMAIL,
-    DATA_DIR, ADMIN_PASS, ORS_API_KEY (opcionais mas recomendados em produção).
+    DATA_DIR, ADMIN_PASS, ORS_API_KEY, GOOGLE_GEOCODING_API_KEY
+    (opcionais mas recomendados em produção).
 
     ORS_API_KEY: chave gratuita do OpenRouteService (openrouteservice.org),
     usada em /rota/otimizar. Sem ela, cai automaticamente para o servidor
@@ -64,6 +65,13 @@ ORS_BASE_URL   = "https://api.openrouteservice.org"
 
 GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY")
 GOOGLE_VISION_URL     = "https://vision.googleapis.com/v1/images:annotate"
+
+# Usada só como fallback de geocodificação (depois que o HERE falha), e só
+# pra endereços "simples" (rua + número), pra economizar a cota. Configure
+# GOOGLE_GEOCODING_API_KEY no Railway pra ativar; sem ela, o app segue só
+# com HERE + banco de coordenadas normalmente.
+GOOGLE_GEOCODING_API_KEY = os.environ.get("GOOGLE_GEOCODING_API_KEY", "")
+GOOGLE_GEOCODING_URL     = "https://maps.googleapis.com/maps/api/geocode/json"
 
 BREVO_API_URL       = "https://api.brevo.com/v3/smtp/email"
 BREVO_API_KEY       = os.environ.get("BREVO_API_KEY")
@@ -516,6 +524,7 @@ def salvar_historico(historico: list):
 
 def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list, user_id: str = ""):
     historico = carregar_historico()
+    existia_antes = any(h.get("nome") == nome_arquivo and h.get("user_id") == user_id for h in historico)
     entrada = {
         "nome":     nome_arquivo,
         "total":    len(rows),
@@ -528,6 +537,11 @@ def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list, user_id
     historico.insert(0, entrada)
     historico = historico[:50]
     salvar_historico(historico)
+    if existia_antes:
+        # A rota anterior desse usuário saiu do histórico (foi substituída
+        # por essa nova importação) — as correções manuais dele eram só
+        # pra ela, então voltam ao valor global normal.
+        banco_coords_limpar_overrides_usuario(user_id)
     return entrada
 
 # ═══════════════════════════════════════════════════════════════════
@@ -538,20 +552,44 @@ def _normalizar_endereco(end: str) -> str:
     return re.sub(r"\s+", " ", (end or "").strip().lower())
 
 def banco_coords_carregar() -> dict:
+    """
+    Formato do arquivo:
+        {
+          "global":    { chave: {lat, lon, endereco_original, salvo_em, fonte, usuario} },
+          "overrides": { user_id: { chave: {lat, lon, endereco_original, salvo_em} } }
+        }
+    "global" é o banco confirmado por API (HERE/Google) — permanente e
+    compartilhado por todo mundo, o "ciclo" que vai pegando os prédios de
+    Goiânia aos poucos. "overrides" é a correção manual de um usuário
+    específico (arrastou o pin no mapa) — vale só enquanto a rota que
+    contém aquele endereço estiver no histórico dele; quando ela sai do
+    histórico (apagada ou substituída por nova importação), o override
+    é descartado e ele volta a ver o valor global normal.
+    """
     p = Path(BANCO_COORDS_FILE)
     if not p.exists():
-        return {}
+        return {"global": {}, "overrides": {}}
     try:
-        return json.loads(p.read_text("utf-8"))
+        banco = json.loads(p.read_text("utf-8"))
     except Exception:
-        return {}
+        return {"global": {}, "overrides": {}}
+    # Migração do formato antigo (dict plano na raiz, sem separar override).
+    if "global" not in banco and "overrides" not in banco:
+        banco = {"global": banco, "overrides": {}}
+    banco.setdefault("global", {})
+    banco.setdefault("overrides", {})
+    return banco
 
 def banco_coords_salvar(banco: dict):
     Path(BANCO_COORDS_FILE).write_text(
         json.dumps(banco, ensure_ascii=False, indent=2), "utf-8"
     )
 
-def banco_coords_salvar_coord(endereco: str, lat: float, lon: float, usuario: str) -> tuple[bool, str, dict]:
+def banco_coords_salvar_coord(endereco: str, lat: float, lon: float, user_id: str) -> tuple[bool, str, dict]:
+    """Correção manual (usuário arrastou o pin no mapa) — vale só pra ele,
+    nunca sobrescreve o valor global confirmado por API. Não é permanente:
+    fica só enquanto a rota que contém esse endereço estiver no histórico
+    dele (veja banco_coords_limpar_overrides_usuario)."""
     chave = _normalizar_endereco(endereco)
     if not chave:
         return False, "Endereço vazio.", {}
@@ -562,41 +600,181 @@ def banco_coords_salvar_coord(endereco: str, lat: float, lon: float, usuario: st
         return False, "Coordenadas inválidas.", {}
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
     banco = banco_coords_carregar()
-    entrada = banco.get(chave) or {"endereco_original": endereco.strip()}
+    user_id = user_id or "(desconhecido)"
+    overrides_usuario = banco["overrides"].setdefault(user_id, {})
+    entrada = overrides_usuario.get(chave) or {"endereco_original": endereco.strip()}
     entrada["lat"] = round(lat, 6)
     entrada["lon"] = round(lon, 6)
     entrada["endereco_original"] = entrada.get("endereco_original") or endereco.strip()
     entrada["salvo_em"] = agora
-    entrada["usuario"]  = usuario
-    banco[chave] = entrada
+    overrides_usuario[chave] = entrada
     banco_coords_salvar(banco)
-    print(f"  [BANCO_COORDS] {usuario!r} salvou {chave!r} → ({lat:.6f}, {lon:.6f})")
-    return True, "Coordenada salva.", {"lat": entrada["lat"], "lon": entrada["lon"]}
+    print(f"  [BANCO_COORDS] override de {user_id!r} em {chave!r} → ({lat:.6f}, {lon:.6f})")
+    return True, "Coordenada salva (só pra você, enquanto essa rota estiver no seu histórico).", {"lat": entrada["lat"], "lon": entrada["lon"]}
+
+def banco_coords_salvar_global(endereco: str, lat: float, lon: float, fonte: str, usuario: str = "") -> dict:
+    """Coordenada confirmada por API (HERE ou Google) — fica permanente no
+    banco compartilhado. Só muda de novo se um usuário der override nela."""
+    chave = _normalizar_endereco(endereco)
+    if not chave:
+        return {}
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    banco = banco_coords_carregar()
+    entrada = banco["global"].get(chave) or {"endereco_original": endereco.strip()}
+    entrada["lat"] = round(float(lat), 6)
+    entrada["lon"] = round(float(lon), 6)
+    entrada["endereco_original"] = entrada.get("endereco_original") or endereco.strip()
+    entrada["salvo_em"] = agora
+    entrada["fonte"]    = fonte
+    if usuario:
+        entrada["usuario"] = usuario
+    banco["global"][chave] = entrada
+    banco_coords_salvar(banco)
+    print(f"  [BANCO_COORDS] confirmado via {fonte} → {chave!r} = ({entrada['lat']:.6f}, {entrada['lon']:.6f})")
+    return {"lat": entrada["lat"], "lon": entrada["lon"]}
+
+def banco_coords_buscar(endereco: str, user_id: str = "") -> dict | None:
+    """Prioriza o override pessoal do usuário (se a rota ainda estiver no
+    histórico dele); senão usa o valor global confirmado por API. Retorna
+    None se não achar nada — aí sim vale a pena chamar HERE/Google."""
+    chave = _normalizar_endereco(endereco)
+    if not chave:
+        return None
+    banco = banco_coords_carregar()
+    if user_id:
+        override = banco["overrides"].get(user_id, {}).get(chave)
+        if override:
+            return {"lat": override["lat"], "lon": override["lon"], "fonte": "override"}
+    entrada = banco["global"].get(chave)
+    if entrada:
+        return {"lat": entrada["lat"], "lon": entrada["lon"], "fonte": entrada.get("fonte", "banco")}
+    return None
+
+def banco_coords_limpar_overrides_usuario(user_id: str):
+    """Chamado quando a rota que tinha as correções manuais sai do
+    histórico do usuário (foi apagada ou substituída por uma nova
+    importação) — as correções eram só pra aquela rota, então o usuário
+    volta a ver o valor global normal."""
+    if not user_id:
+        return
+    banco = banco_coords_carregar()
+    if banco["overrides"].pop(user_id, None) is not None:
+        banco_coords_salvar(banco)
+        print(f"  [BANCO_COORDS] overrides de {user_id!r} limpos (rota saiu do histórico)")
 
 def banco_coords_apagar(endereco: str) -> tuple[bool, str]:
+    """Remove do banco global — usado só pelo painel admin."""
     chave = _normalizar_endereco(endereco)
     banco = banco_coords_carregar()
-    if chave not in banco:
+    if chave not in banco["global"]:
         return False, "Endereço não encontrado no banco."
-    del banco[chave]
+    del banco["global"][chave]
     banco_coords_salvar(banco)
     return True, "Entrada removida do banco."
 
-def banco_coords_aplicar(rows: list) -> list:
+def banco_coords_aplicar(rows: list, user_id: str = "") -> list:
     banco = banco_coords_carregar()
-    if not banco:
+    overrides_usuario = banco["overrides"].get(user_id, {}) if user_id else {}
+    globais = banco["global"]
+    if not overrides_usuario and not globais:
         return rows
     for row in rows:
         chave = _normalizar_endereco(row.get("address", ""))
-        if chave in banco:
-            entrada = banco[chave]
+        entrada = overrides_usuario.get(chave)
+        fonte = "override"
+        if not entrada:
+            entrada = globais.get(chave)
+            fonte = entrada.get("fonte", "banco") if entrada else None
+        if entrada:
             lat = str(entrada["lat"])
             lon = str(entrada["lon"])
-            row["lat"]      = lat
-            row["lon"]       = lon
-            row["coord"]    = lat + "," + lon
-            row["do_banco"] = True
+            row["lat"]         = lat
+            row["lon"]         = lon
+            row["coord"]       = lat + "," + lon
+            row["do_banco"]    = True
+            row["fonte_coord"] = fonte
     return rows
+
+# ─── Geocodificação sob demanda (confirmação na tela de loading) ──────
+
+_RE_QUADRA_LOTE     = re.compile(r"\b(qd|quadra|lt|lote|q\d+|l\d+)\b", re.IGNORECASE)
+_RE_NUMERO_COMPOSTO = re.compile(r"\d+\s*[-/]\s*\d+")
+_RE_RUA_CODIGO      = re.compile(r"\b[A-Za-z]\s?\d{2,}\b")
+
+def endereco_e_simples(endereco: str) -> bool:
+    """
+    Decide se vale a pena gastar cota do Google com esse endereço.
+    Regra combinada com o Geni: o Google só entra pra endereço de rua com
+    número simples (ex.: "RUA D, 385"). Endereço com quadra/lote ou número
+    composto (ex.: "RUA C152, 343-1") fica só no HERE — o Google não
+    costuma acertar esse tipo e não compensa gastar a cota.
+    """
+    if not endereco:
+        return False
+    if _RE_QUADRA_LOTE.search(endereco):
+        return False
+    if _RE_NUMERO_COMPOSTO.search(endereco):
+        return False
+    if _RE_RUA_CODIGO.search(endereco):
+        return False
+    return True
+
+def _here_geocode_query(query: str) -> tuple[float, float] | None:
+    if not HERE_API_KEY:
+        return None
+    try:
+        r = requests.get(
+            "https://geocode.search.hereapi.com/v1/geocode",
+            params={
+                "q": f"{query}, {HERE_CIDADE_UF}",
+                "apiKey": HERE_API_KEY,
+                "limit": 1,
+                "lang": "pt-BR",
+            },
+            timeout=8,
+        )
+        r.raise_for_status()
+        itens = r.json().get("items") or []
+        if not itens:
+            return None
+        pos = itens[0].get("position") or {}
+        lat, lon = pos.get("lat"), pos.get("lng")
+        if lat is None or lon is None:
+            return None
+        return round(float(lat), 6), round(float(lon), 6)
+    except Exception as e:
+        print(f"  [GEOCODE/HERE] falha em {query!r}: {e}")
+        return None
+
+def _google_geocode_query(query: str) -> tuple[float, float] | None:
+    if not GOOGLE_GEOCODING_API_KEY:
+        return None
+    try:
+        r = requests.get(
+            GOOGLE_GEOCODING_URL,
+            params={
+                "address": f"{query}, {HERE_CIDADE_UF}",
+                "key": GOOGLE_GEOCODING_API_KEY,
+                "language": "pt-BR",
+                "region": "br",
+            },
+            timeout=8,
+        )
+        r.raise_for_status()
+        body = r.json()
+        if body.get("status") != "OK":
+            return None
+        resultados = body.get("results") or []
+        if not resultados:
+            return None
+        loc = (resultados[0].get("geometry") or {}).get("location") or {}
+        lat, lon = loc.get("lat"), loc.get("lng")
+        if lat is None or lon is None:
+            return None
+        return round(float(lat), 6), round(float(lon), 6)
+    except Exception as e:
+        print(f"  [GEOCODE/GOOGLE] falha em {query!r}: {e}")
+        return None
 
 # ═══════════════════════════════════════════════════════════════════
 #  USUÁRIOS
@@ -991,7 +1169,7 @@ def processar_pagamento_confirmado(order_nsu: str, transaction_nsu: str = "", re
 #  LER PLANILHA PROCESSADA
 # ═══════════════════════════════════════════════════════════════════
 
-def ler_processado():
+def ler_processado(user_id: str = ""):
     try:
         from openpyxl import load_workbook
     except ImportError:
@@ -1075,7 +1253,7 @@ def ler_processado():
         }
         rows.append(entry)
 
-    rows = banco_coords_aplicar(rows)
+    rows = banco_coords_aplicar(rows, user_id)
     return rows, headers
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1410,7 +1588,7 @@ async def historico_carregar(request: Request, nome: str = ""):
 async def coords_listar(request: Request):
     _sessao_admin_ou_403(request)
     banco = banco_coords_carregar()
-    entradas = [{"chave": k, **v} for k, v in sorted(banco.items())]
+    entradas = [{"chave": k, **v} for k, v in sorted(banco["global"].items())]
     return ok_json({"ok": True, "total": len(entradas), "entradas": entradas})
 
 @app.get("/admin/usuarios")
@@ -1595,7 +1773,7 @@ async def coords_salvar(request: Request):
     endereco = data.get("endereco", "")
     ok, msg, info = banco_coords_salvar_coord(
         endereco, data.get("lat", 0), data.get("lon", 0),
-        sess.get("usuario", "(desconhecido)")
+        sess["user_id"]
     )
     resposta = {"ok": ok, "msg": msg}
     if ok:
@@ -1613,6 +1791,47 @@ async def coords_apagar(request: Request):
     data = await request.json()
     ok, msg = banco_coords_apagar(data.get("endereco", ""))
     return ok_json({"ok": ok, "msg": msg})
+
+@app.post("/geocode/confirmar")
+async def geocode_confirmar(request: Request):
+    """
+    Confirmação de geolocalização (tela "preparando sua rota"). Pra cada
+    endereço recebido, segue o ciclo: banco de coordenadas (override do
+    usuário, senão o global já confirmado) → HERE → Google (só se HERE
+    falhar e o endereço for "simples", pra economizar cota). Todo acerto
+    de API vira entrada permanente no banco global.
+    """
+    sess = _sessao_ou_401(request)
+    usuario = sess.get("usuario", "")   # só pra registrar quem confirmou, no banco global
+    user_id = sess["user_id"]           # chave do override pessoal (some quando a rota sai do histórico)
+    data = await request.json()
+    enderecos = data.get("enderecos") or []
+    if not isinstance(enderecos, list):
+        return err_json("Formato inválido: 'enderecos' deve ser uma lista.")
+    enderecos = [e.strip() for e in enderecos if isinstance(e, str) and e.strip()]
+    enderecos = enderecos[:300]  # limite de segurança por chamada
+
+    resultados = {}
+    for endereco in enderecos:
+        cache = banco_coords_buscar(endereco, user_id)
+        if cache:
+            resultados[endereco] = {"encontrado": True, **cache}
+            continue
+
+        coords = _here_geocode_query(endereco)
+        fonte = "here"
+        if not coords and endereco_e_simples(endereco):
+            coords = _google_geocode_query(endereco)
+            fonte = "google"
+
+        if coords:
+            lat, lon = coords
+            banco_coords_salvar_global(endereco, lat, lon, fonte, usuario)
+            resultados[endereco] = {"encontrado": True, "lat": lat, "lon": lon, "fonte": fonte}
+        else:
+            resultados[endereco] = {"encontrado": False}
+
+    return ok_json({"ok": True, "resultados": resultados})
 
 @app.post("/upload")
 async def upload(request: Request, arquivo: UploadFile = File(...)):
@@ -1813,7 +2032,7 @@ async def pipeline(request: Request):
         print(f"  [PIPELINE] ✅ Pipeline concluído")
         if result.stdout:
             print(result.stdout)
-        rows, headers = ler_processado()
+        rows, headers = ler_processado(sess["user_id"])
         sess["dados"] = (rows, headers)
         arq_final = ARQ_VALIDADO if Path(ARQ_VALIDADO).exists() else ARQ_PROCESSADO
         adicionar_ao_historico(Path(arq_final).name, rows, headers, sess["user_id"])
@@ -1946,8 +2165,13 @@ async def admin_apagar_usuario_route(request: Request, usuario: str = ""):
 async def historico_apagar(request: Request, nome: str = ""):
     sess = _sessao_ou_401(request)
     historico = carregar_historico()
+    existia = any(h.get("nome") == nome and h.get("user_id") == sess["user_id"] for h in historico)
     novo = [h for h in historico if not (h.get("nome") == nome and h.get("user_id") == sess["user_id"])]
     salvar_historico(novo)
+    if existia:
+        # Rota saiu do histórico dele — as correções manuais que ele fez
+        # nela eram só temporárias, então voltam ao valor global normal.
+        banco_coords_limpar_overrides_usuario(sess["user_id"])
     return ok_json({"ok": True})
 
 # ═══════════════════════════════════════════════════════════════════

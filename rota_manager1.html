@@ -3807,6 +3807,7 @@ Limpar
 <li><span class="dot"></span><span>📦 Lendo sua planilha</span><span class="chk">✓</span></li>
 <li><span class="dot"></span><span>🧭 Validando endereços</span><span class="chk">✓</span></li>
 <li><span class="dot"></span><span>✨ Organizando e otimizando a rota</span><span class="chk">✓</span></li>
+<li><span class="dot"></span><span>🌐 Confirmando geolocalização</span><span class="chk">✓</span></li>
 <li><span class="dot"></span><span>📍 Preparando visualização</span><span class="chk">✓</span></li>
 </ul>
 
@@ -4214,7 +4215,7 @@ processarComServidor(file);
 
 
 
-const LOADING_STAGE_COUNT = 4; // Importar, Validar, Otimizar, Pronto
+const LOADING_STAGE_COUNT = 5; // Importar, Validar, Otimizar, Confirmar geo, Pronto
 let _loadingTimerId = null;
 let _loadingElapsed = 0;
 let _loadingAbort = null;
@@ -5759,6 +5760,47 @@ function limparImportacao() {
 document.getElementById('file-input').value = '';
 }
 
+// Confirmação de geolocalização: manda pro servidor só os endereços sem
+// coordenada confiável (não veio do banco nem foi validado pelo HERE no
+// tratamento). O servidor tenta banco → HERE → Google (condicional) e
+// devolve o que achar; endereços não encontrados seguem com o que já tinham.
+async function confirmarGeolocalizacoes(rows, signal) {
+const precisamConfirmar = new Set();
+rows.forEach(r => {
+const temCoord = parseFloat(r.lat) && parseFloat(r.lon);
+const validacaoOk = /ok|valid|encontrad/i.test(r.validacao_here || '');
+if (!r.do_banco && (!temCoord || !validacaoOk) && r.address) {
+precisamConfirmar.add(r.address);
+}
+});
+if (!precisamConfirmar.size) return;
+
+try {
+const resp = await fetch(SERVER + '/geocode/confirmar', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', ...authHeaders() },
+body: JSON.stringify({ enderecos: Array.from(precisamConfirmar) }),
+signal,
+});
+const d = await resp.json();
+if (!d.ok || !d.resultados) return;
+
+rows.forEach(r => {
+const res = d.resultados[r.address];
+if (res && res.encontrado) {
+r.lat         = String(res.lat);
+r.lon         = String(res.lon);
+r.coord       = res.lat + ',' + res.lon;
+r.do_banco    = true;
+r.fonte_coord = res.fonte;
+}
+});
+} catch (e) {
+if (e && e.name === 'AbortError') throw e; // deixa o cancelamento do usuário propagar
+console.warn('[GEOCODE] confirmação falhou, seguindo com o que já tinha:', e);
+}
+}
+
 async function processarComServidor(file) {
 // Mostra loading
 showLoading(`Enviando ${file.name}...`, 0);
@@ -5803,15 +5845,22 @@ gamiProcessarResposta(pd);
 await sleep(1100);
 
 // 3) Busca o resultado (rota_processada_final.xlsx já lido pelo servidor)
-setLoadingStage(3, 'Carregando sua rota otimizada...');
+setLoadingStage(3, 'Confirmando geolocalização...');
 const res  = await fetch(SERVER + '/dados', { headers: authHeaders(), signal: sinal });
 const dado = await res.json();
 if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
-await sleep(700);
 
-// 4) Popula a tabela
     _headers = dado.headers || [];
     _allRows = sortByAddress(normalizarLinhas(dado.rows || []));
+
+    // Confirma no banco/HERE/Google os endereços que ainda não têm uma
+    // coordenada confiável, e já deixa salvo permanentemente pra próxima vez.
+    await confirmarGeolocalizacoes(_allRows, sinal);
+    await sleep(500);
+
+// 4) Popula a tabela
+    setLoadingStage(4, 'Preparando visualização...');
+    await sleep(500);
     clearDraft(); // dados frescos do servidor — descarta rascunho
 
     // Detecta índices de lat/lon/coord nos headers recebidos
