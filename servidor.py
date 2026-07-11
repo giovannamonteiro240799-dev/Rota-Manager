@@ -686,6 +686,27 @@ def banco_coords_apagar(endereco: str) -> tuple[bool, str]:
     banco_coords_salvar(banco)
     return True, "Entrada removida do banco."
 
+def banco_coords_apagar_recentes(horas: float) -> int:
+    """Remove do banco global toda entrada confirmada nas últimas N horas —
+    usado quando uma leva de geocodificações saiu errada (ex.: HERE
+    confundiu quadra/lote) e o Geni quer forçar tudo a ser reconfirmado."""
+    limite = datetime.now() - timedelta(hours=horas)
+    banco = banco_coords_carregar()
+    removidas = []
+    for chave, entrada in banco["global"].items():
+        salvo_em = entrada.get("salvo_em", "")
+        try:
+            dt = datetime.strptime(salvo_em, "%d/%m/%Y %H:%M")
+        except (ValueError, TypeError):
+            continue  # sem data confiável, não mexe
+        if dt >= limite:
+            removidas.append(chave)
+    for chave in removidas:
+        del banco["global"][chave]
+    if removidas:
+        banco_coords_salvar(banco)
+    return len(removidas)
+
 def banco_coords_aplicar(rows: list, user_id: str = "") -> list:
     banco = banco_coords_carregar()
     overrides_usuario = banco["overrides"].get(user_id, {}) if user_id else {}
@@ -1805,6 +1826,19 @@ async def coords_apagar(request: Request):
     data = await request.json()
     ok, msg = banco_coords_apagar(data.get("endereco", ""))
     return ok_json({"ok": ok, "msg": msg})
+
+@app.post("/coords/apagar-recentes")
+async def coords_apagar_recentes(request: Request):
+    """Zera do banco global tudo que foi confirmado nas últimas N horas
+    (padrão 24h) — usado quando uma leva de geocodificações saiu errada."""
+    _sessao_admin_ou_403(request)
+    data = await request.json()
+    try:
+        horas = float(data.get("horas", 24))
+    except (TypeError, ValueError):
+        horas = 24
+    total = banco_coords_apagar_recentes(horas)
+    return ok_json({"ok": True, "removidas": total})
 
 @app.post("/geocode/confirmar")
 async def geocode_confirmar(request: Request):

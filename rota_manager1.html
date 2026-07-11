@@ -3460,6 +3460,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     </div>
     <input id="banco-search" type="text" placeholder="Filtrar endereço..." oninput="renderBancoList()" autocomplete="off">
     <div id="banco-count"></div>
+    <button id="banco-limpar-recentes" onclick="limparBancoRecentes()" style="margin:8px 0; padding:8px 12px; border-radius:8px; border:1px solid #c0392b; background:transparent; color:#e57373; font-size:12px; cursor:pointer;">🗑 Zerar confirmações das últimas 24h</button>
     <div id="banco-list">
       <div id="banco-empty">Nenhuma coordenada salva ainda.</div>
     </div>
@@ -6286,6 +6287,30 @@ function renderBancoList() {
       '<button class="banco-del" title="Remover do banco" onclick="apagarDoBanco(' + JSON.stringify(entry.chave) + ', this)">✕</button>';
     list.appendChild(div);
   });
+}
+
+async function limparBancoRecentes() {
+  if (!confirm('Zerar do banco todas as coordenadas confirmadas nas últimas 24h? Elas vão ser re-geocodificadas (HERE/Google) na próxima vez que aparecerem numa rota.')) return;
+  const btn = document.getElementById('banco-limpar-recentes');
+  btn.disabled = true;
+  try {
+    const r = await fetch(SERVER + '/coords/apagar-recentes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ horas: 24 }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(d.removidas + ' entrada(s) removida(s) do banco.');
+      await carregarBanco();
+    } else {
+      alert('Erro: ' + (d.erro || d.msg));
+    }
+  } catch (e) {
+    alert('Erro ao comunicar com o servidor.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function apagarDoBanco(chave, btn) {
