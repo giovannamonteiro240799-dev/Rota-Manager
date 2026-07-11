@@ -4424,10 +4424,26 @@ if (validacao.startsWith('✅')) {
   const label    = ruaHere ? `⚠️ ${escHtml(ruaHere)}` : '⚠️ Parcial';
   hereBadgeHtml  = `<span class="here-badge here-badge-parcial" title="${escHtml(validacao)}">${label}</span>`;
 }
-// Badge — coord vinda do banco de coordenadas
+// Badge — coord vinda do banco de coordenadas (mostra a origem real:
+// HERE, Google, correção manual do usuário, ou banco genérico/legado)
 let confiancaBadgeHtml = '';
 if (row.do_banco) {
-  confiancaBadgeHtml = `<span class="badge-confianca conf-alta" title="Coordenada salva manualmente."><span class="bc-dot"></span>Coordenada confirmada</span>`;
+  const fonte = row.fonte_coord || '';
+  let label, title;
+  if (fonte === 'here') {
+    label = '✅ Confirmado (HERE)';
+    title = 'Endereço encontrado e confirmado pelo HERE WeGo.';
+  } else if (fonte === 'google') {
+    label = '✅ Confirmado (Google)';
+    title = 'Endereço encontrado e confirmado pelo Google Maps.';
+  } else if (fonte === 'override') {
+    label = '📍 Você confirmou';
+    title = 'Você corrigiu esta coordenada manualmente (vale só até essa rota sair do seu histórico).';
+  } else {
+    label = '✅ Coordenada confirmada';
+    title = 'Coordenada encontrada no banco de coordenadas.';
+  }
+  confiancaBadgeHtml = `<span class="badge-confianca conf-alta" title="${escHtml(title)}"><span class="bc-dot"></span>${label}</span>`;
 } else if (!hasCoord) {
   confiancaBadgeHtml = `<span class="badge-sem-coord" title="Esta linha ainda não tem coordenada."><span class="bc-dot"></span>Sem coordenada</span>`;
 }
