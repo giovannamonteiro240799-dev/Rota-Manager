@@ -738,11 +738,11 @@ _RE_RUA_CODIGO      = re.compile(r"\b[A-Za-z]\s?\d{2,}\b")
 
 def endereco_e_simples(endereco: str) -> bool:
     """
-    Decide se vale a pena gastar cota do Google com esse endereço.
-    Regra combinada com o Geni: o Google só entra pra endereço de rua com
-    número simples (ex.: "RUA D, 385"). Endereço com quadra/lote ou número
-    composto (ex.: "RUA C152, 343-1") fica só no HERE — o Google não
-    costuma acertar esse tipo e não compensa gastar a cota.
+    Regra combinada com o Geni: endereço de rua com número simples
+    (ex.: "RUA D, 385") x endereço com quadra/lote ou número composto
+    (ex.: "RUA C152, 343-1"). Mantido pra outras decisões do fluxo; não
+    decide mais nada sobre chamar o Google — isso saiu do fluxo
+    automático (ver geocode_confirmar).
     """
     if not endereco:
         return False
@@ -753,6 +753,39 @@ def endereco_e_simples(endereco: str) -> bool:
     if _RE_RUA_CODIGO.search(endereco):
         return False
     return True
+
+# O endereço já chega padronizado do tratamento_dados.py como
+# "RUA X, qd-lt", "RUA X, num" ou "RUA X, ED. Nome" (ou só "RUA X", sem
+# nada). Isso extrai o último pedaço (depois da última vírgula) pra
+# comparar com o que o HERE devolveu — é o "número esperado" que precisa
+# bater pro resultado contar como confirmado de verdade.
+_RE_NUM_ESPERADO = re.compile(r"^\d+[A-Za-z]?-\d+$|^\d+$")
+
+def _numero_esperado(endereco: str) -> str | None:
+    if not endereco or "," not in endereco:
+        return None
+    ultimo = endereco.rsplit(",", 1)[-1].strip().upper()
+    if _RE_NUM_ESPERADO.match(ultimo):
+        return ultimo
+    return None  # prédio (ED./RES./COND.) ou sem número — não dá pra validar
+
+def _normaliza_num(v: str) -> str:
+    return re.sub(r"[^0-9A-Z]", "", (v or "").upper())
+
+def _here_resultado_bate(query: str, item: dict) -> bool:
+    """
+    Só aceita o resultado do HERE se o número/qd-lt pedido bate com o que
+    o HERE devolveu de fato (address.houseNumber). Sem essa checagem o
+    HERE "acerta" a rua mas erra o lote, e mesmo assim o app marcava como
+    confirmado — por isso só volta True se for igual.
+    """
+    esperado = _numero_esperado(query)
+    if esperado is None:
+        return True  # nada pra validar (endereço de prédio ou sem número)
+    house = ((item.get("address") or {}).get("houseNumber") or "").strip()
+    if not house:
+        return False
+    return _normaliza_num(house) == _normaliza_num(esperado)
 
 def _here_geocode_query(query: str) -> tuple[float, float] | None:
     if not HERE_API_KEY:
@@ -772,7 +805,11 @@ def _here_geocode_query(query: str) -> tuple[float, float] | None:
         itens = r.json().get("items") or []
         if not itens:
             return None
-        pos = itens[0].get("position") or {}
+        item = itens[0]
+        if not _here_resultado_bate(query, item):
+            print(f"  [GEOCODE/HERE] achou algo pra {query!r} mas o número não bate — descartado")
+            return None
+        pos = item.get("position") or {}
         lat, lon = pos.get("lat"), pos.get("lng")
         if lat is None or lon is None:
             return None
@@ -1845,9 +1882,12 @@ async def geocode_confirmar(request: Request):
     """
     Confirmação de geolocalização (tela "preparando sua rota"). Pra cada
     endereço recebido, segue o ciclo: banco de coordenadas (override do
-    usuário, senão o global já confirmado) → HERE → Google (só se HERE
-    falhar e o endereço for "simples", pra economizar cota). Todo acerto
-    de API vira entrada permanente no banco global.
+    usuário, senão o global já confirmado) → HERE. Sem Google nessa etapa
+    automática — só o HERE, e só conta como confirmado se o número/qd-lt
+    bater de verdade (ver _here_resultado_bate). Se não bater ou o HERE
+    não achar nada, volta "encontrado: false" e o front mantém a
+    geolocalização que já estava (não sobrescreve com um chute). Todo
+    acerto validado vira entrada permanente no banco global.
     """
     sess = _sessao_ou_401(request)
     usuario = sess.get("usuario", "")   # só pra registrar quem confirmou, no banco global
@@ -1867,15 +1907,11 @@ async def geocode_confirmar(request: Request):
             continue
 
         coords = _here_geocode_query(endereco)
-        fonte = "here"
-        if not coords and endereco_e_simples(endereco):
-            coords = _google_geocode_query(endereco)
-            fonte = "google"
 
         if coords:
             lat, lon = coords
-            banco_coords_salvar_global(endereco, lat, lon, fonte, usuario)
-            resultados[endereco] = {"encontrado": True, "lat": lat, "lon": lon, "fonte": fonte}
+            banco_coords_salvar_global(endereco, lat, lon, "here", usuario)
+            resultados[endereco] = {"encontrado": True, "lat": lat, "lon": lon, "fonte": "here"}
         else:
             resultados[endereco] = {"encontrado": False}
 
