@@ -5902,8 +5902,6 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
     document.getElementById('toolbar').style.display = 'flex';
     document.getElementById('bottom-nav').classList.add('show');
     document.body.classList.add('has-bottom-nav');
-    mostrarRotaNoApp(dado.rows || [], dado.headers || [], 'rota_processada_final.xlsx');
-    clearDraft(); // dados frescos — descarta rascunho
 
 } catch(err) {
 hideLoading();
