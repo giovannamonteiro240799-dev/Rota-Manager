@@ -55,22 +55,22 @@ ARQ_VALIDADO   = "rota_validada_here.xlsx"
 TRATAMENTO_PY  = "tratamento_dados.py"
 ANJUN_SCRIPT   = "csv_para_rota_xlsx.py"
 
-HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M")
-HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil")
+HERE_API_KEY   = os.environ.get("HERE_API_KEY", "P8C0izk0pJ1PIZr3d5CpeAI8b_dc7YFLkNKJlzP0A-M").strip()
+HERE_CIDADE_UF = os.environ.get("HERE_CIDADE_UF", "Goiânia - GO, Brasil").strip()
 
 OSRM_BASE_URL  = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org")
 
-ORS_API_KEY    = os.environ.get("ORS_API_KEY", "")
+ORS_API_KEY    = os.environ.get("ORS_API_KEY", "").strip()
 ORS_BASE_URL   = "https://api.openrouteservice.org"
 
-GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY")
+GOOGLE_VISION_API_KEY = (os.environ.get("GOOGLE_VISION_API_KEY") or "").strip() or None
 GOOGLE_VISION_URL     = "https://vision.googleapis.com/v1/images:annotate"
 
 # Usada só como fallback de geocodificação (depois que o HERE falha), e só
 # pra endereços "simples" (rua + número), pra economizar a cota. Configure
 # GOOGLE_GEOCODING_API_KEY no Railway pra ativar; sem ela, o app segue só
 # com HERE + banco de coordenadas normalmente.
-GOOGLE_GEOCODING_API_KEY = os.environ.get("GOOGLE_GEOCODING_API_KEY", "")
+GOOGLE_GEOCODING_API_KEY = os.environ.get("GOOGLE_GEOCODING_API_KEY", "").strip()
 GOOGLE_GEOCODING_URL     = "https://maps.googleapis.com/maps/api/geocode/json"
 
 BREVO_API_URL       = "https://api.brevo.com/v3/smtp/email"
@@ -543,6 +543,20 @@ def adicionar_ao_historico(nome_arquivo: str, rows: list, headers: list, user_id
         # pra ela, então voltam ao valor global normal.
         banco_coords_limpar_overrides_usuario(user_id)
     return entrada
+
+def atualizar_rows_historico(nome_arquivo: str, rows: list, user_id: str = "") -> bool:
+    """Atualiza (in-place) as rows de uma entrada JÁ existente no histórico,
+    sem disparar a limpeza de overrides — usado só pra refletir, depois do
+    /pipeline, os endereços que a confirmação de geolocalização (HERE/
+    Google) achou. Não conta como "a rota saiu do histórico"."""
+    historico = carregar_historico()
+    for h in historico:
+        if h.get("nome") == nome_arquivo and h.get("user_id") == user_id:
+            h["rows"]  = rows
+            h["total"] = len(rows)
+            salvar_historico(historico)
+            return True
+    return False
 
 # ═══════════════════════════════════════════════════════════════════
 #  BANCO DE COORDENADAS
@@ -1832,6 +1846,27 @@ async def geocode_confirmar(request: Request):
             resultados[endereco] = {"encontrado": False}
 
     return ok_json({"ok": True, "resultados": resultados})
+
+@app.post("/historico/atualizar-coords")
+async def historico_atualizar_coords(request: Request):
+    """Depois que o front confirma a geolocalização (HERE/Google) por cima
+    dos dados que o /pipeline devolveu, manda as linhas atualizadas de
+    volta aqui — pra refletir tanto no /dados desta sessão quanto no
+    histórico já salvo. Sem isso, recarregar a rota (F5 ou pelo histórico)
+    mostraria os badges como se nada tivesse sido confirmado."""
+    sess = _sessao_ou_401(request)
+    data = await request.json()
+    rows = data.get("rows") or []
+    if not isinstance(rows, list):
+        return err_json("Formato inválido: 'rows' deve ser uma lista.")
+
+    headers = sess["dados"][1] if sess.get("dados") else []
+    sess["dados"] = (rows, headers)
+
+    arq_final = ARQ_VALIDADO if Path(ARQ_VALIDADO).exists() else ARQ_PROCESSADO
+    nome = Path(arq_final).name
+    atualizado = atualizar_rows_historico(nome, rows, sess["user_id"])
+    return ok_json({"ok": True, "historico_atualizado": atualizado})
 
 @app.post("/upload")
 async def upload(request: Request, arquivo: UploadFile = File(...)):

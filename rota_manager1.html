@@ -5812,6 +5812,20 @@ r.do_banco    = true;
 r.fonte_coord = res.fonte;
 }
 });
+
+// Reflete no /dados desta sessão e no histórico salvo — senão recarregar
+// a rota (F5 ou pelo histórico) mostra os badges como se nada tivesse
+// sido confirmado. Falha aqui não deve travar o fluxo principal.
+try {
+await fetch(SERVER + '/historico/atualizar-coords', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json', ...authHeaders() },
+body: JSON.stringify({ rows }),
+signal,
+});
+} catch (e2) {
+console.warn('[GEOCODE] não deu pra atualizar histórico com as coordenadas confirmadas:', e2);
+}
 } catch (e) {
 if (e && e.name === 'AbortError') throw e; // deixa o cancelamento do usuário propagar
 console.warn('[GEOCODE] confirmação falhou, seguindo com o que já tinha:', e);
