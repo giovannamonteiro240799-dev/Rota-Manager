@@ -756,44 +756,10 @@ def endereco_e_simples(endereco: str) -> bool:
 
 # O endereço já chega padronizado do tratamento_dados.py como
 # "RUA X, qd-lt", "RUA X, num" ou "RUA X, ED. Nome" (ou só "RUA X", sem
-# nada). Isso extrai o último pedaço (depois da última vírgula) pra
-# comparar com o que o HERE devolveu — é o "número esperado" que precisa
-# bater pro resultado contar como confirmado de verdade.
-_RE_NUM_ESPERADO = re.compile(r"^\d+[A-Za-z]?-\d+$|^\d+$")
-
-def _numero_esperado(endereco: str) -> str | None:
-    if not endereco or "," not in endereco:
-        return None
-    ultimo = endereco.rsplit(",", 1)[-1].strip().upper()
-    if _RE_NUM_ESPERADO.match(ultimo):
-        return ultimo
-    return None  # prédio (ED./RES./COND.) ou sem número — não dá pra validar
-
-def _normaliza_num(v: str) -> str:
-    return re.sub(r"[^0-9A-Z]", "", (v or "").upper())
-
-def _here_resultado_bate(query: str, item: dict) -> bool:
-    """
-    Só aceita o resultado do HERE se:
-      1) o resultado for de nível "houseNumber" de verdade (não street/
-         locality/place — isso é o HERE chutando o meio da rua ou o
-         centro do bairro quando não acha o número/lote real); e
-      2) o número/qd-lt pedido bate com o address.houseNumber devolvido.
-    Sem o item 1, o HERE às vezes ecoa de volta um houseNumber parecido
-    com o que foi pedido mesmo interpolando a posição — por isso "bater
-    o número" sozinho não é suficiente, e foi isso que causou vários
-    endereços diferentes caindo no mesmo ponto (chute de área).
-    """
-    esperado = _numero_esperado(query)
-    if esperado is None:
-        return True  # nada pra validar (endereço de prédio ou sem número)
-    tipo = item.get("resultType")
-    if tipo not in ("houseNumber", "addressBlock"):
-        return False  # só achou rua/bairro/área — não é o lote certo
-    house = ((item.get("address") or {}).get("houseNumber") or "").strip()
-    if not house:
-        return False
-    return _normaliza_num(house) == _normaliza_num(esperado)
+# nada). A validação estrita por resultType/houseNumber que tinha aqui
+# foi removida — estava rejeitando muito endereço válido (o HERE nem
+# sempre marca resultType como houseNumber mesmo quando acerta). Agora
+# aceita o primeiro resultado do HERE direto, como antes.
 
 def _here_geocode_query(query: str) -> tuple[float, float] | None:
     if not HERE_API_KEY:
@@ -813,11 +779,7 @@ def _here_geocode_query(query: str) -> tuple[float, float] | None:
         itens = r.json().get("items") or []
         if not itens:
             return None
-        item = itens[0]
-        if not _here_resultado_bate(query, item):
-            print(f"  [GEOCODE/HERE] achou algo pra {query!r} mas o número não bate — descartado")
-            return None
-        pos = item.get("position") or {}
+        pos = itens[0].get("position") or {}
         lat, lon = pos.get("lat"), pos.get("lng")
         if lat is None or lon is None:
             return None
@@ -1890,15 +1852,16 @@ async def geocode_confirmar(request: Request):
     """
     Confirmação de geolocalização (tela "preparando sua rota"). Pra cada
     endereço recebido, segue o ciclo: banco de coordenadas (override do
-    usuário, senão o global já confirmado) → HERE. Sem Google nessa etapa
-    automática — só o HERE, e só conta como confirmado se o número/qd-lt
-    bater de verdade (ver _here_resultado_bate). Se não bater ou o HERE
-    não achar nada, volta "encontrado: false" e o front mantém a
-    geolocalização que já estava (não sobrescreve com um chute). Todo
-    acerto validado vira entrada permanente no banco global.
+    Confirmação de geolocalização (tela "preparando sua rota"). Pra cada
+    endereço recebido, olha só o banco de coordenadas (override do
+    usuário, senão o global já confirmado). Sem HERE e sem Google nessa
+    etapa automática — o HERE estava bagunçando endereço que a planilha
+    já trouxe certo. O HERE continua disponível pra busca manual na tela
+    de "abrir mapa" (isso é outro fluxo, no browser, não passa por aqui).
+    Se não tem no banco, volta "encontrado: false" e o front mantém a
+    geolocalização que já veio do tratamento_dados.py.
     """
     sess = _sessao_ou_401(request)
-    usuario = sess.get("usuario", "")   # só pra registrar quem confirmou, no banco global
     user_id = sess["user_id"]           # chave do override pessoal (some quando a rota sai do histórico)
     data = await request.json()
     enderecos = data.get("enderecos") or []
@@ -1912,14 +1875,6 @@ async def geocode_confirmar(request: Request):
         cache = banco_coords_buscar(endereco, user_id)
         if cache:
             resultados[endereco] = {"encontrado": True, **cache}
-            continue
-
-        coords = _here_geocode_query(endereco)
-
-        if coords:
-            lat, lon = coords
-            banco_coords_salvar_global(endereco, lat, lon, "here", usuario)
-            resultados[endereco] = {"encontrado": True, "lat": lat, "lon": lon, "fonte": "here"}
         else:
             resultados[endereco] = {"encontrado": False}
 

@@ -4876,6 +4876,14 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
 #search-wrap:focus-within { border-color:#60a5fa; }
 #search-input { flex:1; background:none; border:none; outline:none; color:#fff; font-size:13px; }
 #search-input::placeholder { color:#475569; }
+#btn-clear-search {
+ display:none; align-items:center; justify-content:center;
+ width:20px; height:20px; flex-shrink:0; padding:0;
+ background:#1e3a5f; border:none; border-radius:50%;
+ color:#94a3b8; font-size:12px; line-height:1; cursor:pointer;
+}
+#btn-clear-search.show { display:flex; }
+#btn-clear-search:hover { background:#2c4a6e; color:#fff; }
 #btn-search { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:12px; font-weight:bold; cursor:pointer; }
 #btn-search:hover { background:#1d4ed8; }
 #suggestions {
@@ -4972,6 +4980,7 @@ body { display:flex; flex-direction:column; height:100vh; background:#0b1120; fo
  <div id="search-wrap">
    <span style="color:#60a5fa;font-size:13px" id="search-icon">🔍</span>
    <input id="search-input" type="text" placeholder="Buscar endereço ou lat,lng... (HERE)"/>
+   <button id="btn-clear-search" type="button" title="Limpar busca" aria-label="Limpar busca">✕</button>
    <div id="suggestions"></div>
  </div>
  <button class="btn" id="btn-search">BUSCAR</button>
@@ -5483,6 +5492,7 @@ function atualizarBarraBusca() {
 // ── Busca ─────────────────────────────────────────────────────────────
 const searchInput = document.getElementById('search-input');
 const suggestionsEl = document.getElementById('suggestions');
+const btnClearSearch = document.getElementById('btn-clear-search');
 let suggestTimer = null;
 const hideSugg = () => { suggestionsEl.style.display = 'none'; suggestionsEl.innerHTML = ''; };
 
@@ -5505,6 +5515,7 @@ function moveMap(lat, lng, title, source) {
  updateGoogle(lat, lng);
  updateTerceiros(lat, lng);
  searchInput.value = title;
+ btnClearSearch.classList.toggle('show', title.length > 0);
  hideSugg();
  const tag = source ? '[' + source + '] ' : '';
  document.getElementById('status-bar').textContent = '📍 ' + tag + title;
@@ -5712,9 +5723,19 @@ function renderSugg(items) {
  suggestionsEl.style.display = 'block';
 }
 
-searchInput.addEventListener('input', () => { clearTimeout(suggestTimer); suggestTimer = setTimeout(() => autosuggest(searchInput.value.trim()), 300); });
+searchInput.addEventListener('input', () => {
+ clearTimeout(suggestTimer);
+ btnClearSearch.classList.toggle('show', searchInput.value.length > 0);
+ suggestTimer = setTimeout(() => autosuggest(searchInput.value.trim()), 300);
+});
 searchInput.addEventListener('keydown', e => { if (e.key==='Enter') { e.stopPropagation(); geocode(searchInput.value.trim()); } if (e.key==='Escape') hideSugg(); });
 document.getElementById('btn-search').addEventListener('click', () => geocode(searchInput.value.trim()));
+btnClearSearch.addEventListener('click', () => {
+ searchInput.value = '';
+ btnClearSearch.classList.remove('show');
+ hideSugg();
+ searchInput.focus();
+});
 document.addEventListener('click', e => { if (!e.target.closest('#search-bar')) hideSugg(); });
 <\/script>
 </body>
@@ -5942,9 +5963,10 @@ if (!dado.ok) throw new Error(dado.erro || 'Erro ao buscar dados');
     _headers = dado.headers || [];
     _allRows = sortByAddress(normalizarLinhas(dado.rows || []));
 
-    // Confirma no banco/HERE/Google os endereços que ainda não têm uma
-    // coordenada confiável, e já deixa salvo permanentemente pra próxima vez.
-    await confirmarGeolocalizacoes(_allRows, sinal);
+    // Validação automática de geolocalização via HERE removida daqui —
+    // estava causando problema. A geolocalização que já vem do
+    // tratamento_dados.py fica como está; a confirmação manual continua
+    // disponível pelo "abrir mapa" de cada endereço.
     await sleep(500);
 
 // 4) Popula a tabela
