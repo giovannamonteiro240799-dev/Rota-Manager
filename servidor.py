@@ -707,6 +707,37 @@ def banco_coords_apagar_recentes(horas: float) -> int:
         banco_coords_salvar(banco)
     return len(removidas)
 
+def banco_coords_apagar_intervalo(data_inicio: str, data_fim: str) -> int:
+    """
+    Remove do banco global toda entrada cujo "salvo_em" caiu dentro do
+    intervalo [data_inicio 00:00, data_fim 23:59:59] (inclusive nas duas
+    pontas). data_inicio/data_fim vêm como "YYYY-MM-DD" (formato de
+    <input type="date">). Ex.: apagar tudo confirmado de 28/06/2026 até
+    hoje, pra forçar reconfirmação de uma leva que saiu errada.
+    """
+    try:
+        inicio = datetime.strptime(data_inicio, "%Y-%m-%d")
+        fim = datetime.strptime(data_fim, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)
+    except (ValueError, TypeError):
+        raise ValueError("Datas inválidas — use o formato YYYY-MM-DD.")
+    if fim < inicio:
+        raise ValueError("Data final não pode ser antes da data inicial.")
+    banco = banco_coords_carregar()
+    removidas = []
+    for chave, entrada in banco["global"].items():
+        salvo_em = entrada.get("salvo_em", "")
+        try:
+            dt = datetime.strptime(salvo_em, "%d/%m/%Y %H:%M")
+        except (ValueError, TypeError):
+            continue  # sem data confiável, não mexe
+        if inicio <= dt <= fim:
+            removidas.append(chave)
+    for chave in removidas:
+        del banco["global"][chave]
+    if removidas:
+        banco_coords_salvar(banco)
+    return len(removidas)
+
 def banco_coords_aplicar(rows: list, user_id: str = "") -> list:
     banco = banco_coords_carregar()
     overrides_usuario = banco["overrides"].get(user_id, {}) if user_id else {}
@@ -1845,6 +1876,23 @@ async def coords_apagar_recentes(request: Request):
     except (TypeError, ValueError):
         horas = 24
     total = banco_coords_apagar_recentes(horas)
+    return ok_json({"ok": True, "removidas": total})
+
+@app.post("/coords/apagar-intervalo")
+async def coords_apagar_intervalo(request: Request):
+    """Zera do banco global tudo confirmado num intervalo de datas
+    específico (ex.: 28/06/2026 até hoje) — mesma ideia do apagar-recentes,
+    só que com início e fim escolhidos em vez de só "últimas N horas"."""
+    _sessao_admin_ou_403(request)
+    data = await request.json()
+    data_inicio = (data.get("data_inicio") or "").strip()
+    data_fim = (data.get("data_fim") or "").strip()
+    if not data_inicio or not data_fim:
+        return err_json("Informe data_inicio e data_fim (YYYY-MM-DD).")
+    try:
+        total = banco_coords_apagar_intervalo(data_inicio, data_fim)
+    except ValueError as e:
+        return err_json(str(e))
     return ok_json({"ok": True, "removidas": total})
 
 @app.post("/geocode/confirmar")

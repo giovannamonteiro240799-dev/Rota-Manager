@@ -3489,6 +3489,12 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
     <input id="banco-search" type="text" placeholder="Filtrar endereço..." oninput="renderBancoList()" autocomplete="off">
     <div id="banco-count"></div>
     <button id="banco-limpar-recentes" onclick="limparBancoRecentes()" style="margin:8px 0; padding:8px 12px; border-radius:8px; border:1px solid #c0392b; background:transparent; color:#e57373; font-size:12px; cursor:pointer;">🗑 Zerar confirmações das últimas 24h</button>
+    <div id="banco-intervalo" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 10px;">
+      <input id="banco-intervalo-inicio" type="date" style="flex:1; min-width:130px; padding:7px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:12px;">
+      <span style="color:var(--muted); font-size:12px;">até</span>
+      <input id="banco-intervalo-fim" type="date" style="flex:1; min-width:130px; padding:7px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:12px;">
+      <button id="banco-limpar-intervalo" onclick="limparBancoIntervalo()" style="padding:8px 12px; border-radius:8px; border:1px solid #c0392b; background:transparent; color:#e57373; font-size:12px; cursor:pointer; white-space:nowrap;">🗑 Zerar nesse período</button>
+    </div>
     <div id="banco-list">
       <div id="banco-empty">Nenhuma coordenada salva ainda.</div>
     </div>
@@ -6347,6 +6353,8 @@ let _bancoCache = [];   // cache local para filtro sem nova request
 async function abrirBanco() {
   _abrirOverlayAnimado('banco-overlay', 'banco-panel', 'animate__slideInRight');
   document.getElementById('banco-search').value = '';
+  const fimEl = document.getElementById('banco-intervalo-fim');
+  if (fimEl && !fimEl.value) fimEl.value = new Date().toISOString().slice(0, 10);
   await carregarBanco();
 }
 
@@ -6406,6 +6414,36 @@ async function limparBancoRecentes() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ horas: 24 }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(d.removidas + ' entrada(s) removida(s) do banco.');
+      await carregarBanco();
+    } else {
+      alert('Erro: ' + (d.erro || d.msg));
+    }
+  } catch (e) {
+    alert('Erro ao comunicar com o servidor.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function limparBancoIntervalo() {
+  const inicio = document.getElementById('banco-intervalo-inicio').value;
+  const fim = document.getElementById('banco-intervalo-fim').value;
+  if (!inicio || !fim) { alert('Escolha a data de início e a data de fim.'); return; }
+  if (fim < inicio) { alert('A data final não pode ser antes da data inicial.'); return; }
+  const [yi, mi, di] = inicio.split('-');
+  const [yf, mf, df] = fim.split('-');
+  if (!confirm(`Zerar do banco todas as coordenadas confirmadas de ${di}/${mi}/${yi} até ${df}/${mf}/${yf}? Elas vão ser re-geocodificadas na próxima vez que aparecerem numa rota.`)) return;
+  const btn = document.getElementById('banco-limpar-intervalo');
+  btn.disabled = true;
+  try {
+    const r = await fetch(SERVER + '/coords/apagar-intervalo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ data_inicio: inicio, data_fim: fim }),
     });
     const d = await r.json();
     if (d.ok) {
