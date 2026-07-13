@@ -90,12 +90,14 @@ def extract_street_key(addr: str) -> str:
 
 def _parse_qd_lt(addr: str):
     u = strip_accents(addr.upper())
-    c = re.search(r'\bQD\s*(\d+[A-Z]?)\s*LT\s*(\d+)', u)
+    # "QD 21 LT 05" e também abreviações comuns na planilha: "Q 21 LT 05",
+    # "QD21LTE05", "QD 47 LTS 01" etc — Q sozinho e LT/LTE/LTS como lote.
+    c = re.search(r'\bQD?\s*(\d+[A-Z]?)\s*LT[ES]?\s*(\d+)', u)
     if c:
         return c.group(1), str(int(c.group(2)))
 
     qd = re.search(r'\b(?:QUADRA|QDR?\.?)\s*:?\s*(\d+[A-Z]?)', u)
-    lt = re.search(r'\b(?:LOTE|LT\.?)\s*:?\s*(\d+)', u)
+    lt = re.search(r'\b(?:LOTE|LT[ES]?\.?)\s*:?\s*(\d+)', u)
     if qd and lt:
         return qd.group(1), str(int(lt.group(1)))
 
@@ -143,7 +145,11 @@ def _extract_street_number(addr: str):
     parts = u.split(',')
     if len(parts) < 2:
         return None
-    token = parts[1].strip().split()[0] if parts[1].strip() else ''
+    token_str = parts[1].strip()
+    # Marcador de número por extenso antes do dígito: "Num 2", "Nº 2",
+    # "N° 2", "N. 2" — tira o marcador pra sobrar só o número.
+    token_str = re.sub(r'^(?:N[º°O]?\.?|NUM(?:ERO)?\.?)\s+', '', token_str)
+    token = token_str.split()[0] if token_str else ''
     if re.match(r'^S/?N$', token):
         return None
     m = re.match(r'^(\d+)$', token)
@@ -285,7 +291,18 @@ def group_rows_p1(rows, threshold=0.72):
             continue
 
         same_bld = bldnames[i] and bldnames[j] and bldnames[i] == bldnames[j]
-        if similarity(fkeys[i], fkeys[j]) >= threshold or same_bld:
+
+        # Quando nenhum dos dois lados tem QUALQUER detalhe extraído (nem
+        # número, nem qd/lt, nem nome de prédio reconhecido) e a rua é a
+        # mesma, o único critério que sobra é o texto livre — e aí um
+        # limite de 0.72 é frouxo demais: "Rua X, S/N, prédio A" e
+        # "Rua X, Q21 Lt05" (quando a extração falha) acabam se parecendo
+        # só por compartilharem o nome da rua. Nesse caso exige uma
+        # parecença bem mais alta (praticamente o mesmo texto).
+        sem_detalhe_algum = not ki_has_detail and not kj_has_detail and not same_bld
+        limiar = 0.93 if sem_detalhe_algum else threshold
+
+        if similarity(fkeys[i], fkeys[j]) >= limiar or same_bld:
             union(i, j)
 
     groups = defaultdict(list)
